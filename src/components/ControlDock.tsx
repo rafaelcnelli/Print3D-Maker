@@ -1,0 +1,1175 @@
+import { useRef, useState, type ChangeEvent } from 'react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FileCode2,
+  ImageUp,
+  Lock,
+  LockOpen,
+  RotateCcw,
+} from 'lucide-react';
+import { KEYCHAIN_SVG_PRESETS } from '../core/contourTracer';
+import type { DimensionAxis } from '../core/dimensionMath';
+import {
+  FILAMENT_COLORS,
+  FILAMENT_FINISHES,
+  FONT_STYLES,
+  TEMPLATES,
+} from '../core/projectDefaults';
+import { formatPrintDuration } from '../core/stlExporter';
+import type {
+  BoxLetterLayout,
+  CameraPresetId,
+  HeartStructureMode,
+  KeychainRingPosition,
+  KeychainShape,
+  PrintMetrics,
+  ProjectConfig,
+  SignBaseStyle,
+  SvgAttachMode,
+} from '../types/project';
+
+type DockTab = 'shape' | 'dimensions' | 'filament';
+
+interface ControlDockProps {
+  config: ProjectConfig;
+  textError: string | null;
+  cameraPreset: CameraPresetId;
+  metrics: PrintMetrics;
+  collapsed: boolean;
+  lockProportions: boolean;
+  onToggleCollapse: () => void;
+  onToggleLockProportions: () => void;
+  onUpdateConfig: (patch: Partial<ProjectConfig>) => void;
+  onChangeDimensionAxis: (axis: DimensionAxis, value: number) => void;
+  onSelectCamera: (preset: CameraPresetId) => void;
+  onResetDefaults: () => void;
+  onDownloadSTL: () => void;
+  onDownloadOBJ: () => void;
+  canExport: boolean;
+}
+
+export function ControlDock({
+  config,
+  textError,
+  cameraPreset,
+  metrics,
+  collapsed,
+  lockProportions,
+  onToggleCollapse,
+  onToggleLockProportions,
+  onUpdateConfig,
+  onChangeDimensionAxis,
+  onSelectCamera,
+  onResetDefaults,
+  onDownloadSTL,
+  onDownloadOBJ,
+  canExport,
+}: ControlDockProps) {
+  const [activeTab, setActiveTab] = useState<DockTab>('shape');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const meta = TEMPLATES[config.template];
+
+  const isFlatTemplate =
+    config.template === 'keychain' ||
+    config.template === 'plaque' ||
+    config.template === 'svg-keychain' ||
+    (config.template === 'box-letter' && config.boxLetterLayout === 'separated');
+
+  const handleSvgOrImageFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadError(null);
+
+    const isSvg =
+      file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+
+    if (isSvg) {
+      try {
+        const text = await file.text();
+        if (!text.includes('<svg')) {
+          setUploadError('Arquivo SVG inválido. Escolha um vetor SVG com formas.');
+          return;
+        }
+        onUpdateConfig({
+          svgSourceType: 'svg',
+          svgRawContent: text,
+          svgFileName: file.name,
+        });
+      } catch {
+        setUploadError('Não foi possível ler o arquivo SVG.');
+      }
+      return;
+    }
+
+    // Raster image (PNG/JPG/WebP) -> draw onto compact offscreen canvas for fast live contour tracing
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Falha ao carregar imagem'));
+        image.src = objectUrl;
+      });
+      const maxDim = 160;
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height, 1));
+      const w = Math.max(12, Math.round(img.width * scale));
+      const h = Math.max(12, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setUploadError('Não foi possível processar a imagem neste navegador.');
+        return;
+      }
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      onUpdateConfig({
+        svgSourceType: 'image',
+        imagePixels: {
+          width: w,
+          height: h,
+          rgba: new Uint8ClampedArray(imgData.data),
+        },
+        svgFileName: file.name,
+      });
+    } catch {
+      setUploadError('Formato de imagem não suportado. Use SVG, PNG ou JPG.');
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
+
+  const cameraButtons: { id: CameraPresetId; label: string }[] = [
+    { id: 'iso', label: '3D' },
+    { id: 'front', label: meta.frontHint },
+    { id: 'top', label: meta.topHint },
+    { id: 'side', label: 'Lateral' },
+  ];
+
+  const activePresetLabel =
+    KEYCHAIN_SVG_PRESETS.find((p) => p.id === config.svgPresetId)?.label ?? 'Patinha';
+
+  return (
+    <section
+      aria-label="Controles de personalização do projeto 3D"
+      className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 w-[min(960px,95vw)] pointer-events-none flex flex-col items-center"
+    >
+      {/* Attached Collapse / Expand Toggle Handle */}
+      <button
+        type="button"
+        onClick={onToggleCollapse}
+        aria-expanded={!collapsed}
+        aria-controls="studio-dock-panel"
+        className="pointer-events-auto inline-flex items-center gap-1.5 h-8 px-3.5 rounded-t-lg border border-b-0 border-[#D5DCE6] dark:border-[#273043] bg-[#FFFFFF]/96 dark:bg-[#161B26]/96 text-xs font-medium text-[#374151] dark:text-[#CBD5E1] hover:text-[#171A21] dark:hover:text-[#F8FAFC] shadow-[0_-4px_14px_rgba(15,23,42,0.05)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+      >
+        {collapsed ? (
+          <>
+            <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>Personalizar projeto</span>
+          </>
+        ) : (
+          <>
+            <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>Ocultar controles</span>
+          </>
+        )}
+      </button>
+
+      {/* Main Dock Panel (solid rgba surface, NO backdrop-filter over WebGL) */}
+      {!collapsed && (
+        <div
+          id="studio-dock-panel"
+          className="pointer-events-auto w-full rounded-xl border border-[#D5DCE6] dark:border-[#273043] bg-[#FFFFFF]/96 dark:bg-[#161B26]/96 shadow-[0_14px_38px_-12px_rgba(15,23,42,0.18)] dark:shadow-[0_18px_42px_-12px_rgba(0,0,0,0.6)] overflow-hidden transition-colors"
+        >
+          {/* Row 1: Primary Name Input (or SVG/Image Import) + Quick Camera Angles + Print Specs */}
+          <div className="px-4 py-3 border-b border-[#E5E9F0] dark:border-[#262E3E] flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-5">
+            {config.template === 'svg-keychain' ? (
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  data-testid="upload-svg-image-input"
+                  accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp"
+                  onChange={handleSvgOrImageFileChange}
+                  className="sr-only"
+                />
+                <button
+                  type="button"
+                  data-testid="upload-svg-image-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 h-9 px-3.5 rounded-lg bg-[#171A21] hover:bg-[#2B303C] dark:bg-[#263042] dark:hover:bg-[#334155] text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+                >
+                  <ImageUp className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span>Importar SVG / Imagem</span>
+                </button>
+                <span className="text-xs font-medium text-[#475162] dark:text-[#94A3B8] truncate">
+                  {config.svgSourceType === 'preset'
+                    ? `Modelo: ${activePresetLabel}`
+                    : `Arquivo: ${config.svgFileName || 'Personalizado'}`}
+                </span>
+                {uploadError && (
+                  <p role="alert" className="text-xs font-medium text-[#B91C1C] dark:text-[#F87171] truncate">
+                    {uploadError}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <label
+                  htmlFor="project-name-input"
+                  className="text-xs font-semibold text-[#374151] dark:text-[#CBD5E1] whitespace-nowrap shrink-0"
+                >
+                  Nome
+                </label>
+                <div className="relative flex-1 min-w-0 max-w-xs">
+                  <input
+                    id="project-name-input"
+                    type="text"
+                    value={config.text}
+                    onChange={(e) => onUpdateConfig({ text: e.target.value })}
+                    maxLength={18}
+                    placeholder={config.template === 'monogram' ? 'Ex: Gabriel' : 'Ex: MARIA'}
+                    aria-invalid={Boolean(textError)}
+                    aria-describedby={textError ? 'project-name-error' : undefined}
+                    className={`w-full h-9 px-3 rounded-lg border text-sm font-semibold tracking-wide bg-[#F7F9FC] dark:bg-[#0F141D] text-[#171A21] dark:text-[#F1F5F9] placeholder:text-[#8A94A6] dark:placeholder:text-[#64748B] placeholder:normal-case focus:outline-none focus:bg-white dark:focus:bg-[#161D2A] transition-colors ${
+                      config.template === 'monogram' ? '' : 'uppercase'
+                    } ${
+                      textError
+                        ? 'border-[#DC2626] dark:border-[#EF4444] focus:ring-2 focus:ring-[#DC2626]/25'
+                        : 'border-[#D1D8E3] dark:border-[#323E54] focus:border-[#171A21] dark:focus:border-[#64748B] focus:ring-2 focus:ring-[#171A21]/10 dark:focus:ring-[#94A3B8]/20'
+                    }`}
+                  />
+                </div>
+                {textError && (
+                  <p
+                    id="project-name-error"
+                    role="alert"
+                    className="text-xs font-medium text-[#B91C1C] dark:text-[#F87171] truncate"
+                  >
+                    {textError}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Camera Angle Presets (instant front/top verification for Heart+Name!) */}
+            <div
+              role="group"
+              aria-label="Ângulos de visualização"
+              className="flex items-center gap-1 p-1 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A] overflow-x-auto no-scrollbar shrink-0"
+            >
+              {cameraButtons.map((btn) => {
+                const active = cameraPreset === btn.id;
+                return (
+                  <button
+                    key={btn.id}
+                    type="button"
+                    onClick={() => onSelectCamera(btn.id)}
+                    aria-pressed={active}
+                    className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                      active
+                        ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                        : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                    }`}
+                  >
+                    {btn.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Clean unboxed tabular print specs */}
+            <div
+              aria-label="Medidas estimadas da peça"
+              className="hidden xl:flex items-center gap-2 text-xs font-mono tabular-nums text-[#4D5666] dark:text-[#94A3B8] whitespace-nowrap shrink-0"
+            >
+              <span>
+                {metrics.widthMm} × {metrics.heightMm} × {metrics.depthMm} mm
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>~{metrics.filamentGrams} g</span>
+              <span aria-hidden="true">·</span>
+              <span>{formatPrintDuration(metrics.estimatedMinutes)}</span>
+            </div>
+          </div>
+
+          {/* Row 2: Tab Strip + Active Parameter Controls */}
+          <div className="px-4 py-2.5 bg-[#FAFBFD] dark:bg-[#111620] flex flex-col gap-3 transition-colors">
+            <div className="flex items-center justify-between gap-4 border-b border-[#E7EBF2] dark:border-[#262E3E] pb-2">
+              <div role="tablist" aria-label="Categorias de ajustes" className="flex items-center gap-4">
+                {(
+                  [
+                    { id: 'shape', label: 'Texto e forma' },
+                    { id: 'dimensions', label: 'Dimensões' },
+                    { id: 'filament', label: 'Filamento e exportação' },
+                  ] as { id: DockTab; label: string }[]
+                ).map((tab) => {
+                  const selected = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`text-xs font-semibold pb-1 -mb-[9px] border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                        selected
+                          ? 'text-[#171A21] dark:text-[#F8FAFC] border-[#D93848] dark:border-[#E84C5C]'
+                          : 'text-[#616B7D] dark:text-[#94A3B8] border-transparent hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="hidden sm:flex items-center gap-3 text-xs text-[#5A6375] dark:text-[#94A3B8] min-w-0">
+                <span className="hidden md:inline truncate">{meta.summary}</span>
+                <span className="xl:hidden font-mono tabular-nums whitespace-nowrap">
+                  {metrics.widthMm}×{metrics.heightMm}×{metrics.depthMm} mm · ~{metrics.filamentGrams} g
+                </span>
+              </div>
+            </div>
+
+            {/* Tab 1: Text & Shape */}
+            {activeTab === 'shape' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-center">
+                {/* Font Style (all text templates except svg-keychain) */}
+                {config.template !== 'svg-keychain' && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">Tipografia 3D</span>
+                    <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                      {FONT_STYLES.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => onUpdateConfig({ fontStyle: f.id })}
+                          aria-pressed={config.fontStyle === f.id}
+                          className={`flex-1 h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                            config.fontStyle === f.id
+                              ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                              : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Monogram (Inicial + Nome cursivo) Controls */}
+                {config.template === 'monogram' && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-1 w-20 shrink-0">
+                        <label
+                          htmlFor="monogram-initial-input"
+                          className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]"
+                        >
+                          Inicial
+                        </label>
+                        <input
+                          id="monogram-initial-input"
+                          type="text"
+                          maxLength={1}
+                          value={config.monogramInitial}
+                          onChange={(e) =>
+                            onUpdateConfig({ monogramInitial: e.target.value.slice(0, 1) })
+                          }
+                          placeholder={(config.text.trim()[0] || 'G').toUpperCase()}
+                          className="h-8 px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-white dark:bg-[#0F141D] text-center text-sm font-bold uppercase text-[#171A21] dark:text-[#F1F5F9] placeholder:text-[#8A94A6] dark:placeholder:text-[#64748B] focus:outline-none focus:border-[#171A21] dark:focus:border-[#64748B]"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <label htmlFor="slider-monogram-pos" className="font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                            Altura do nome
+                          </label>
+                          <span className="font-mono tabular-nums font-semibold text-[#171A21] dark:text-[#F1F5F9]">
+                            {config.monogramNamePos}%
+                          </span>
+                        </div>
+                        <input
+                          id="slider-monogram-pos"
+                          type="range"
+                          min={20}
+                          max={62}
+                          step={1}
+                          value={config.monogramNamePos}
+                          onChange={(e) =>
+                            onUpdateConfig({ monogramNamePos: Number(e.target.value) })
+                          }
+                          className="studio-slider w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pt-3 sm:pt-4">
+                      <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          data-testid="toggle-keyring-arch"
+                          checked={config.keyringArch}
+                          onChange={(e) =>
+                            onUpdateConfig({ keyringArch: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Arco negativo</span>
+                      </label>
+
+                      <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={config.useDualColor}
+                          onChange={(e) =>
+                            onUpdateConfig({ useDualColor: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Duas cores</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Box Letter (Letra Caixa 2 peças) Controls */}
+                {config.template === 'box-letter' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                        Disposição das peças
+                      </span>
+                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                        {(
+                          [
+                            { id: 'assembled', label: 'Montado (Em pé)' },
+                            { id: 'separated', label: 'Separado (Impressão)' },
+                          ] as { id: BoxLetterLayout; label: string }[]
+                        ).map((mode) => (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            data-testid={`box-layout-${mode.id}`}
+                            onClick={() => onUpdateConfig({ boxLetterLayout: mode.id })}
+                            aria-pressed={config.boxLetterLayout === mode.id}
+                            className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                              config.boxLetterLayout === mode.id
+                                ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                                : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                            }`}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <label htmlFor="slider-box-border" className="font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                            Borda
+                          </label>
+                          <span className="font-mono tabular-nums font-semibold text-[#171A21] dark:text-[#F1F5F9]">
+                            {config.boxLetterBorderMm.toFixed(1)} mm
+                          </span>
+                        </div>
+                        <input
+                          id="slider-box-border"
+                          type="range"
+                          min={2.0}
+                          max={6.0}
+                          step={0.2}
+                          value={config.boxLetterBorderMm}
+                          onChange={(e) =>
+                            onUpdateConfig({ boxLetterBorderMm: Number(e.target.value) })
+                          }
+                          className="studio-slider w-full"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={config.boxLetterJoined}
+                            onChange={(e) =>
+                              onUpdateConfig({ boxLetterJoined: e.target.checked })
+                            }
+                            className="w-3.5 h-3.5 accent-[#D93848] rounded cursor-pointer"
+                          />
+                          <span>Letras unidas</span>
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            data-testid="toggle-keyring-arch"
+                            checked={config.keyringArch}
+                            onChange={(e) =>
+                              onUpdateConfig({ keyringArch: e.target.checked })
+                            }
+                            className="w-3.5 h-3.5 accent-[#D93848] rounded cursor-pointer"
+                          />
+                          <span>Arco 1ª letra</span>
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* SVG / Image Keychain Controls */}
+                {config.template === 'svg-keychain' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                        Modelos rápidos (ou importe SVG/PNG)
+                      </span>
+                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                        {KEYCHAIN_SVG_PRESETS.map((preset) => {
+                          const active =
+                            config.svgSourceType === 'preset' &&
+                            config.svgPresetId === preset.id;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() =>
+                                onUpdateConfig({
+                                  svgSourceType: 'preset',
+                                  svgPresetId: preset.id,
+                                })
+                              }
+                              aria-pressed={active}
+                              className={`flex-1 h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                                active
+                                  ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                                  : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                        Encaixe para argola
+                      </span>
+                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                        {(
+                          [
+                            { id: 'arch', label: 'Arco negativo' },
+                            { id: 'hole', label: 'Furo redondo' },
+                            { id: 'loop', label: 'Argola (arco)' },
+                          ] as { id: SvgAttachMode; label: string }[]
+                        ).map((mode) => (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            data-testid={`svg-attach-${mode.id}`}
+                            onClick={() => onUpdateConfig({ svgAttachMode: mode.id })}
+                            aria-pressed={config.svgAttachMode === mode.id}
+                            className={`flex-1 h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                              config.svgAttachMode === mode.id
+                                ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                                : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                            }`}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <label htmlFor="slider-svg-border" className="font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                            Borda
+                          </label>
+                          <span className="font-mono tabular-nums font-semibold text-[#171A21] dark:text-[#F1F5F9]">
+                            {config.svgBorderMm.toFixed(1)} mm
+                          </span>
+                        </div>
+                        <input
+                          id="slider-svg-border"
+                          type="range"
+                          min={1.5}
+                          max={6.0}
+                          step={0.2}
+                          value={config.svgBorderMm}
+                          onChange={(e) =>
+                            onUpdateConfig({ svgBorderMm: Number(e.target.value) })
+                          }
+                          className="studio-slider w-full"
+                        />
+                      </div>
+
+                      {config.svgSourceType === 'image' && (
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <label htmlFor="slider-img-thresh" className="font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                                Contraste
+                              </label>
+                              <span className="font-mono tabular-nums font-semibold text-[#171A21] dark:text-[#F1F5F9]">
+                                {config.imageThreshold}
+                              </span>
+                            </div>
+                            <input
+                              id="slider-img-thresh"
+                              type="range"
+                              min={25}
+                              max={230}
+                              step={5}
+                              value={config.imageThreshold}
+                              onChange={(e) =>
+                                onUpdateConfig({ imageThreshold: Number(e.target.value) })
+                              }
+                              className="studio-slider w-full"
+                            />
+                          </div>
+
+                          <label className="inline-flex items-center gap-1 text-[11px] font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap pt-3">
+                            <input
+                              type="checkbox"
+                              checked={config.imageInvert}
+                              onChange={(e) =>
+                                onUpdateConfig({ imageInvert: e.target.checked })
+                              }
+                              className="w-3.5 h-3.5 accent-[#D93848] rounded cursor-pointer"
+                            />
+                            <span>Inverter</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Template-specific Structure Options */}
+                {config.template === 'heart-name' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                        Estrutura do coração
+                      </span>
+                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                        {(
+                          [
+                            { id: 'pure', label: 'Puro (Ilusão)' },
+                            { id: 'desk-stand', label: 'Com base' },
+                            { id: 'solid-front', label: 'Frente sólida' },
+                          ] as { id: HeartStructureMode; label: string }[]
+                        ).map((mode) => (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => onUpdateConfig({ heartMode: mode.id })}
+                            aria-pressed={config.heartMode === mode.id}
+                            className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                              config.heartMode === mode.id
+                                ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                                : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                            }`}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pt-3 sm:pt-4">
+                      <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          data-testid="toggle-keyring-arch"
+                          checked={config.keyringArch}
+                          onChange={(e) =>
+                            onUpdateConfig({ keyringArch: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Arco negativo (1ª letra)</span>
+                      </label>
+
+                      <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={config.useDualColor}
+                          onChange={(e) =>
+                            onUpdateConfig({ useDualColor: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Duas cores</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {config.template === 'name-sign' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">Estilo da base</span>
+                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                        {(
+                          [
+                            { id: 'beveled', label: 'Chanfrada' },
+                            { id: 'stepped', label: 'Degrau' },
+                            { id: 'minimal', label: 'Fina' },
+                          ] as { id: SignBaseStyle; label: string }[]
+                        ).map((st) => (
+                          <button
+                            key={st.id}
+                            type="button"
+                            onClick={() => onUpdateConfig({ signBaseStyle: st.id })}
+                            aria-pressed={config.signBaseStyle === st.id}
+                            className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                              config.signBaseStyle === st.id
+                                ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                                : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                            }`}
+                          >
+                            {st.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <label
+                          htmlFor="sign-subtitle-input"
+                          className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]"
+                        >
+                          Subtítulo na base
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            data-testid="toggle-keyring-arch"
+                            checked={config.keyringArch}
+                            onChange={(e) =>
+                              onUpdateConfig({ keyringArch: e.target.checked })
+                            }
+                            className="w-3.5 h-3.5 accent-[#D93848] rounded cursor-pointer"
+                          />
+                          <span>Arco 1ª letra</span>
+                        </label>
+                      </div>
+                      <input
+                        id="sign-subtitle-input"
+                        type="text"
+                        value={config.subtitle}
+                        onChange={(e) => onUpdateConfig({ subtitle: e.target.value })}
+                        maxLength={18}
+                        placeholder="Ex: ESTÚDIO 3D"
+                        className="h-8 px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-white dark:bg-[#0F141D] text-xs font-medium uppercase text-[#171A21] dark:text-[#F1F5F9] placeholder:text-[#8A94A6] dark:placeholder:text-[#64748B] focus:outline-none focus:border-[#171A21] dark:focus:border-[#64748B]"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {config.template === 'keychain' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">Formato da base</span>
+                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                        {(
+                          [
+                            { id: 'capsule', label: 'Cápsula' },
+                            { id: 'heart', label: 'Coração' },
+                            { id: 'rectangle', label: 'Retângulo' },
+                          ] as { id: KeychainShape; label: string }[]
+                        ).map((sh) => (
+                          <button
+                            key={sh.id}
+                            type="button"
+                            onClick={() => onUpdateConfig({ keychainShape: sh.id })}
+                            aria-pressed={config.keychainShape === sh.id}
+                            className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                              config.keychainShape === sh.id
+                                ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                                : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                            }`}
+                          >
+                            {sh.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-3 sm:pt-4">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          data-testid="toggle-keyring-arch"
+                          checked={config.keyringArch}
+                          onChange={(e) =>
+                            onUpdateConfig({ keyringArch: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Arco negativo (1ª letra)</span>
+                      </label>
+
+                      {!config.keyringArch && (
+                        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                          {(
+                            [
+                              { id: 'left', label: 'Lateral' },
+                              { id: 'top', label: 'Topo' },
+                            ] as { id: KeychainRingPosition; label: string }[]
+                          ).map((pos) => (
+                            <button
+                              key={pos.id}
+                              type="button"
+                              onClick={() => onUpdateConfig({ keychainRingPos: pos.id })}
+                              aria-pressed={config.keychainRingPos === pos.id}
+                              className={`h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                                config.keychainRingPos === pos.id
+                                  ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                                  : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                              }`}
+                            >
+                              {pos.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={config.keychainRaisedBorder}
+                          onChange={(e) =>
+                            onUpdateConfig({ keychainRaisedBorder: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Borda</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {config.template === 'plaque' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <label
+                        htmlFor="plaque-subtitle-input"
+                        className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]"
+                      >
+                        Segunda linha (opcional)
+                      </label>
+                      <input
+                        id="plaque-subtitle-input"
+                        type="text"
+                        value={config.subtitle}
+                        onChange={(e) => onUpdateConfig({ subtitle: e.target.value })}
+                        maxLength={20}
+                        placeholder="Ex: IMPRESSÃO 3D"
+                        className="h-8 px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-white dark:bg-[#0F141D] text-xs font-medium uppercase text-[#171A21] dark:text-[#F1F5F9] placeholder:text-[#8A94A6] dark:placeholder:text-[#64748B] focus:outline-none focus:border-[#171A21] dark:focus:border-[#64748B]"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-3 sm:pt-4">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          data-testid="toggle-keyring-arch"
+                          checked={config.keyringArch}
+                          onChange={(e) =>
+                            onUpdateConfig({ keyringArch: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Arco 1ª letra</span>
+                      </label>
+
+                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={config.plaqueMountHoles}
+                          onChange={(e) =>
+                            onUpdateConfig({ plaqueMountHoles: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Furos</span>
+                      </label>
+
+                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={config.plaqueRounded}
+                          onChange={(e) =>
+                            onUpdateConfig({ plaqueRounded: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                        />
+                        <span>Cantos suaves</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: Dimensions */}
+            {activeTab === 'dimensions' && (
+              <div className="flex flex-col gap-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    data-testid="dock-toggle-lock-proportions"
+                    onClick={onToggleLockProportions}
+                    aria-pressed={lockProportions}
+                    className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-xs font-semibold transition-colors cursor-pointer ${
+                      lockProportions
+                        ? 'border-[#0284C7]/40 dark:border-[#38BDF8]/40 bg-[#F0F9FF] dark:bg-[#0C2D48]/65 text-[#0369A1] dark:text-[#7DD3FC]'
+                        : 'border-[#CBD5E1] dark:border-[#323E54] bg-white dark:bg-[#1E2534] text-[#475569] dark:text-[#CBD5E1] hover:text-[#171A21] dark:hover:text-[#F8FAFC]'
+                    }`}
+                  >
+                    {lockProportions ? (
+                      <Lock className="w-3.5 h-3.5" aria-hidden="true" />
+                    ) : (
+                      <LockOpen className="w-3.5 h-3.5" aria-hidden="true" />
+                    )}
+                    <span>
+                      {lockProportions ? 'Proporção trancada' : 'Proporção livre'}
+                    </span>
+                  </button>
+
+                  <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                    Dica: clique direto na peça 3D para medir e redimensionar pelas alças
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 items-center">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <label htmlFor="slider-width" className="font-medium text-[#374151] dark:text-[#CBD5E1]">
+                        Largura
+                      </label>
+                      <span className="font-mono tabular-nums text-[#171A21] dark:text-[#F1F5F9] font-semibold">
+                        {config.widthMm} mm
+                      </span>
+                    </div>
+                    <input
+                      id="slider-width"
+                      type="range"
+                      min={meta.minWidthMm}
+                      max={meta.maxWidthMm}
+                      step={1}
+                      value={config.widthMm}
+                      onChange={(e) =>
+                        onChangeDimensionAxis('widthMm', Number(e.target.value))
+                      }
+                      className="studio-slider w-full"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <label htmlFor="slider-height" className="font-medium text-[#374151] dark:text-[#CBD5E1]">
+                        {isFlatTemplate ? 'Comprimento' : 'Altura'}
+                      </label>
+                      <span className="font-mono tabular-nums text-[#171A21] dark:text-[#F1F5F9] font-semibold">
+                        {config.heightMm} mm
+                      </span>
+                    </div>
+                    <input
+                      id="slider-height"
+                      type="range"
+                      min={meta.minHeightMm}
+                      max={meta.maxHeightMm}
+                      step={1}
+                      value={config.heightMm}
+                      onChange={(e) =>
+                        onChangeDimensionAxis('heightMm', Number(e.target.value))
+                      }
+                      className="studio-slider w-full"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <label htmlFor="slider-depth" className="font-medium text-[#374151] dark:text-[#CBD5E1]">
+                        {isFlatTemplate ? 'Espessura' : 'Profundidade'}
+                      </label>
+                      <span className="font-mono tabular-nums text-[#171A21] dark:text-[#F1F5F9] font-semibold">
+                        {config.depthMm} mm
+                      </span>
+                    </div>
+                    <input
+                      id="slider-depth"
+                      type="range"
+                      min={meta.minDepthMm}
+                      max={meta.maxDepthMm}
+                      step={0.5}
+                      value={config.depthMm}
+                      onChange={(e) =>
+                        onChangeDimensionAxis('depthMm', Number(e.target.value))
+                      }
+                      className="studio-slider w-full"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <label htmlFor="slider-text-scale" className="font-medium text-[#374151] dark:text-[#CBD5E1]">
+                        {config.template === 'svg-keychain'
+                          ? 'Escala do desenho'
+                          : 'Escala do texto'}
+                      </label>
+                      <span className="font-mono tabular-nums text-[#171A21] dark:text-[#F1F5F9] font-semibold">
+                        {config.textScale}%
+                      </span>
+                    </div>
+                    <input
+                      id="slider-text-scale"
+                      type="range"
+                      min={72}
+                      max={102}
+                      step={2}
+                      value={config.textScale}
+                      onChange={(e) => onUpdateConfig({ textScale: Number(e.target.value) })}
+                      className="studio-slider w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Filament & Export */}
+            {activeTab === 'filament' && (
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                {/* Filament colors */}
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8] whitespace-nowrap">
+                      Cor letras
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {FILAMENT_COLORS.map((c) => {
+                        const selected = config.primaryColor === c.hex;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => onUpdateConfig({ primaryColor: c.hex })}
+                            aria-label={`Cor principal ${c.name}`}
+                            aria-pressed={selected}
+                            title={c.name}
+                            className={`w-6 h-6 rounded-full border cursor-pointer transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                              selected
+                                ? 'ring-2 ring-offset-2 ring-[#171A21] border-[#171A21] dark:ring-offset-[#111620] dark:ring-[#F1F5F9] dark:border-[#F1F5F9]'
+                                : 'border-[#CBD2DC] dark:border-[#3B475C]'
+                            }`}
+                            style={{ backgroundColor: c.hex }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8] whitespace-nowrap">
+                      Base / frente
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {FILAMENT_COLORS.slice(0, 8).map((c) => {
+                        const selected = config.accentColor === c.hex && config.useDualColor;
+                        return (
+                          <button
+                            key={`acc-${c.id}`}
+                            type="button"
+                            onClick={() =>
+                              onUpdateConfig({ accentColor: c.hex, useDualColor: true })
+                            }
+                            aria-label={`Cor secundária ${c.name}`}
+                            aria-pressed={selected}
+                            title={c.name}
+                            className={`w-5 h-5 rounded-full border cursor-pointer transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                              selected
+                                ? 'ring-2 ring-offset-1 ring-[#171A21] border-[#171A21] dark:ring-offset-[#111620] dark:ring-[#F1F5F9] dark:border-[#F1F5F9]'
+                                : 'border-[#CBD2DC] dark:border-[#3B475C]'
+                            }`}
+                            style={{ backgroundColor: c.hex }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Finish & Secondary Export Actions */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label="Acabamento do filamento"
+                    value={config.finish}
+                    onChange={(e) =>
+                      onUpdateConfig({ finish: e.target.value as ProjectConfig['finish'] })
+                    }
+                    className="h-8 px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-white dark:bg-[#1E2534] text-xs font-medium text-[#171A21] dark:text-[#E2E8F0] cursor-pointer focus:outline-none focus:border-[#171A21] dark:focus:border-[#64748B]"
+                  >
+                    {FILAMENT_FINISHES.map((fin) => (
+                      <option key={fin.id} value={fin.id}>
+                        {fin.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={onDownloadSTL}
+                    disabled={!canExport}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#171A21] hover:bg-[#2B303C] dark:bg-[#F1F5F9] dark:hover:bg-white disabled:bg-[#CBD2DC] dark:disabled:bg-[#334155] text-white dark:text-[#0F172A] text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>STL</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onDownloadOBJ}
+                    disabled={!canExport}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[#CBD2DC] dark:border-[#323E54] bg-white dark:bg-[#1E2534] hover:bg-[#F3F5F9] dark:hover:bg-[#273044] disabled:opacity-50 text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <FileCode2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>OBJ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onResetDefaults}
+                    aria-label="Restaurar padrões do projeto"
+                    title="Restaurar padrões"
+                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg border border-[#CBD2DC] dark:border-[#323E54] bg-white dark:bg-[#1E2534] hover:bg-[#F3F5F9] dark:hover:bg-[#273044] text-[#4D5666] dark:text-[#CBD5E1] hover:text-[#171A21] dark:hover:text-[#F8FAFC] text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Resetar</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

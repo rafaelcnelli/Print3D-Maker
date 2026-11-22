@@ -1,0 +1,6 @@
+{
+  "name": "Molde3D",
+  "description": "Criador rápido de projetos 3D prontos para impressão: coração com nome, letreiros, chaveiros e placas com exportação direta em STL.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

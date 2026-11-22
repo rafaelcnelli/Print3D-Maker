@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E2430" />
+      <stop offset="100%" stop-color="#12161F" />
+    </linearGradient>
+    <linearGradient id="heartFront" x1="14" y1="14" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F26457" />
+      <stop offset="55%" stop-color="#D93848" />
+      <stop offset="100%" stop-color="#B62837" />
+    </linearGradient>
+    <linearGradient id="heartDepth" x1="12" y1="12" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9A202D" />
+      <stop offset="100%" stop-color="#6E141E" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded Studio Badge -->
+  <rect width="64" height="64" rx="15" fill="url(#bg)" />
+  <rect x="1.5" y="1.5" width="61" height="61" rx="13.5" stroke="#2E3748" stroke-width="1.5" />
+
+  <!-- Subtle 3D Print Bed Isometric Grid Lines -->
+  <path d="M10 49L32 57L54 49" stroke="#2D3648" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M16 45L32 51L48 45" stroke="#252D3D" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- 3D Extruded Heart Back Layer (Isometric Depth) -->
+  <path
+    d="M35 49.5C35 49.5 16 37.8 16 24.5C16 18.7 20.4 14.5 25.8 14.5C29.3 14.5 32.5 16.4 35 19.6C37.5 16.4 40.7 14.5 44.2 14.5C49.6 14.5 54 18.7 54 24.5C54 37.8 35 49.5 35 49.5Z"
+    fill="url(#heartDepth)"
+  />
+
+  <!-- 3D Sculpted Heart Front Layer with Vertical Letter-Column Ribs -->
+  <path
+    d="M30 47.5C30 47.5 11 35.8 11 22.5C11 16.7 15.4 12.5 20.8 12.5C24.3 12.5 27.5 14.4 30 17.6C32.5 14.4 35.7 12.5 39.2 12.5C44.6 12.5 49 16.7 49 22.5C49 35.8 30 47.5 30 47.5Z"
+    fill="url(#heartFront)"
+  />
+
+  <!-- Vertical 3D Letter-Slice Highlights (Dual-View Heart+Name Signature) -->
+  <path d="M19 13.5V35.5" stroke="#171B24" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round" />
+  <path d="M26.5 15V43" stroke="#171B24" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round" />
+  <path d="M33.5 15V43" stroke="#171B24" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round" />
+  <path d="M41 13.5V35.5" stroke="#171B24" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round" />
+
+  <!-- Negative Keyring Hole on First Letter Top -->
+  <circle cx="15.8" cy="18.2" r="2.1" fill="#181D27" stroke="#FCA5A5" stroke-opacity="0.55" stroke-width="0.9" />
+</svg>
