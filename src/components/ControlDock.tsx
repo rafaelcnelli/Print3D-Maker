@@ -8,9 +8,13 @@ import {
   Lock,
   LockOpen,
   RotateCcw,
+  SlidersHorizontal,
 } from 'lucide-react';
-import { KEYCHAIN_SVG_PRESETS } from '../core/contourTracer';
-import type { DimensionAxis } from '../core/dimensionMath';
+import {
+  computeAutoThreshold,
+  KEYCHAIN_SVG_PRESETS,
+} from '../core/contourTracer';
+import type { DimensionAxis, DimensionBounds } from '../core/dimensionMath';
 import {
   FILAMENT_COLORS,
   FILAMENT_FINISHES,
@@ -20,6 +24,7 @@ import {
 import { formatPrintDuration } from '../core/stlExporter';
 import type {
   BoxLetterLayout,
+  BuildPlateSize,
   CameraPresetId,
   HeartStructureMode,
   KeychainRingPosition,
@@ -29,11 +34,14 @@ import type {
   SignBaseStyle,
   SvgAttachMode,
 } from '../types/project';
+import type { ImageVectorizeDraft } from './ImageVectorizeModal';
 
 type DockTab = 'shape' | 'dimensions' | 'filament';
 
 interface ControlDockProps {
   config: ProjectConfig;
+  bounds: DimensionBounds;
+  buildPlate: BuildPlateSize;
   textError: string | null;
   cameraPreset: CameraPresetId;
   metrics: PrintMetrics;
@@ -42,6 +50,8 @@ interface ControlDockProps {
   onToggleCollapse: () => void;
   onToggleLockProportions: () => void;
   onUpdateConfig: (patch: Partial<ProjectConfig>) => void;
+  onOpenVectorizeDraft: (draft: ImageVectorizeDraft) => void;
+  onReopenVectorizeModal: () => void;
   onChangeDimensionAxis: (axis: DimensionAxis, value: number) => void;
   onSelectCamera: (preset: CameraPresetId) => void;
   onResetDefaults: () => void;
@@ -52,6 +62,8 @@ interface ControlDockProps {
 
 export function ControlDock({
   config,
+  bounds,
+  buildPlate,
   textError,
   cameraPreset,
   metrics,
@@ -60,6 +72,8 @@ export function ControlDock({
   onToggleCollapse,
   onToggleLockProportions,
   onUpdateConfig,
+  onOpenVectorizeDraft,
+  onReopenVectorizeModal,
   onChangeDimensionAxis,
   onSelectCamera,
   onResetDefaults,
@@ -105,7 +119,7 @@ export function ControlDock({
       return;
     }
 
-    // Raster image (PNG/JPG/WebP) -> draw onto compact offscreen canvas for fast live contour tracing
+    // Raster image (PNG/JPG/WebP) -> high-res 384px capture + open pre-approval vectorization modal
     const objectUrl = URL.createObjectURL(file);
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -114,10 +128,10 @@ export function ControlDock({
         image.onerror = () => reject(new Error('Falha ao carregar imagem'));
         image.src = objectUrl;
       });
-      const maxDim = 160;
+      const maxDim = 384;
       const scale = Math.min(1, maxDim / Math.max(img.width, img.height, 1));
-      const w = Math.max(12, Math.round(img.width * scale));
-      const h = Math.max(12, Math.round(img.height * scale));
+      const w = Math.max(16, Math.round(img.width * scale));
+      const h = Math.max(16, Math.round(img.height * scale));
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
@@ -126,17 +140,30 @@ export function ControlDock({
         setUploadError('Não foi possível processar a imagem neste navegador.');
         return;
       }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.clearRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
       const imgData = ctx.getImageData(0, 0, w, h);
-      onUpdateConfig({
-        svgSourceType: 'image',
-        imagePixels: {
+      const rgba = new Uint8ClampedArray(imgData.data);
+      const auto = computeAutoThreshold(rgba, w, h, 'auto');
+      const previewUrl = canvas.toDataURL('image/png');
+
+      onOpenVectorizeDraft({
+        fileName: file.name,
+        pixels: {
           width: w,
           height: h,
-          rgba: new Uint8ClampedArray(imgData.data),
+          rgba,
         },
-        svgFileName: file.name,
+        previewUrl,
+        initialOptions: {
+          threshold: auto.threshold,
+          invert: false,
+          traceMode: 'auto',
+          smoothness: 2,
+          despeckle: 1,
+        },
       });
     } catch {
       setUploadError('Formato de imagem não suportado. Use SVG, PNG ou JPG.');
@@ -213,6 +240,17 @@ export function ControlDock({
                     ? `Modelo: ${activePresetLabel}`
                     : `Arquivo: ${config.svgFileName || 'Personalizado'}`}
                 </span>
+                {config.svgSourceType === 'image' && config.imagePixels && (
+                  <button
+                    type="button"
+                    data-testid="edit-vectorize-btn"
+                    onClick={onReopenVectorizeModal}
+                    className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-[#F7F9FC] dark:bg-[#1E2534] hover:bg-[#EDF1F7] dark:hover:bg-[#273145] text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Editar vetor</span>
+                  </button>
+                )}
                 {uploadError && (
                   <p role="alert" className="text-xs font-medium text-[#B91C1C] dark:text-[#F87171] truncate">
                     {uploadError}
@@ -954,8 +992,11 @@ export function ControlDock({
                     </span>
                   </button>
 
-                  <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
-                    Dica: clique direto na peça 3D para medir e redimensionar pelas alças
+                  <span
+                    data-testid="dock-bed-limit-hint"
+                    className="text-[11px] font-mono tabular-nums text-[#64748B] dark:text-[#94A3B8]"
+                  >
+                    Mesa {buildPlate.widthMm}×{buildPlate.depthMm}×{buildPlate.heightMm} mm · Máx: {bounds.maxWidthMm}×{bounds.maxHeightMm}×{bounds.maxDepthMm} mm
                   </span>
                 </div>
 
@@ -972,8 +1013,8 @@ export function ControlDock({
                     <input
                       id="slider-width"
                       type="range"
-                      min={meta.minWidthMm}
-                      max={meta.maxWidthMm}
+                      min={bounds.minWidthMm}
+                      max={bounds.maxWidthMm}
                       step={1}
                       value={config.widthMm}
                       onChange={(e) =>
@@ -995,8 +1036,8 @@ export function ControlDock({
                     <input
                       id="slider-height"
                       type="range"
-                      min={meta.minHeightMm}
-                      max={meta.maxHeightMm}
+                      min={bounds.minHeightMm}
+                      max={bounds.maxHeightMm}
                       step={1}
                       value={config.heightMm}
                       onChange={(e) =>
@@ -1018,8 +1059,8 @@ export function ControlDock({
                     <input
                       id="slider-depth"
                       type="range"
-                      min={meta.minDepthMm}
-                      max={meta.maxDepthMm}
+                      min={bounds.minDepthMm}
+                      max={bounds.maxDepthMm}
                       step={0.5}
                       value={config.depthMm}
                       onChange={(e) =>

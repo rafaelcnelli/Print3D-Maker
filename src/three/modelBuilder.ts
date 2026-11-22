@@ -2,12 +2,11 @@ import * as THREE from 'three';
 import {
   dilateMaskByRadius,
   dilateShapesWithSDF,
-  extractMaskFromImagePixels,
   extractShapesFromMask,
   getPresetSvgById,
-  maskToCenteredShapes,
   parseSvgStringToShapes,
   rasterizeShapesToMask,
+  vectorizeImagePixels,
 } from '../core/contourTracer';
 import { buildCursiveScriptShapes } from '../core/cursiveFont';
 import {
@@ -1307,14 +1306,21 @@ function buildSvgKeychainModel(
       graphicShapes = [];
     }
   } else if (config.svgSourceType === 'image' && config.imagePixels) {
-    const mask = extractMaskFromImagePixels(
+    const traced = vectorizeImagePixels(
       config.imagePixels.rgba,
       config.imagePixels.width,
       config.imagePixels.height,
-      config.imageThreshold,
-      config.imageInvert
+      availW,
+      availH,
+      {
+        threshold: config.imageThreshold,
+        invert: config.imageInvert,
+        traceMode: config.imageTraceMode,
+        smoothness: config.imageSmoothness,
+        despeckle: config.imageDespeckle,
+      }
     );
-    graphicShapes = maskToCenteredShapes(mask, availW, availH).shapes;
+    graphicShapes = traced.shapes;
   }
 
   if (graphicShapes.length === 0) {
@@ -1323,7 +1329,8 @@ function buildSvgKeychainModel(
   }
 
   // 2. Compute smooth rounded unified offset baseplate via exact SDF dilation
-  const baseShapes = dilateShapesWithSDF(graphicShapes, borderMm, 0.34);
+  const sdfPixelMm = Math.max(0.28, Math.max(W, H) / 260);
+  const baseShapes = dilateShapesWithSDF(graphicShapes, borderMm, sdfPixelMm);
   const anchor = findTopSilhouetteAnchor(baseShapes.length > 0 ? baseShapes : graphicShapes);
 
   let archPlacement: NegativeArchPlacement | null = null;

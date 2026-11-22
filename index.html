@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,10 +15,20 @@
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#171A21" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="alternate icon" href="./favicon.svg" />
-    <link rel="apple-touch-icon" href="./favicon.svg" />
+    <meta name="theme-color" content="#111620" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <link rel="alternate icon" href="%BASE_URL%favicon.svg" />
+    <link rel="apple-touch-icon" href="%BASE_URL%favicon.svg" />
+    <script>
+      (function () {
+        try {
+          var saved = window.localStorage.getItem('molde3d-theme');
+          var theme = saved === 'light' ? 'light' : 'dark';
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -26,9 +36,10 @@
       rel="stylesheet"
     />
   </head>
-  <body class="bg-[#ECEFF3] text-[#171A21] antialiased selection:bg-[#D93848]/15 selection:text-[#171A21] overflow-hidden">
+  <body class="bg-[#ECEFF3] dark:bg-[#111620] text-[#171A21] dark:text-[#F1F5F9] antialiased selection:bg-[#D93848]/20 selection:text-[#171A21] dark:selection:text-[#F8FAFC] overflow-hidden">
     <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+
 

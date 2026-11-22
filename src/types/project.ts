@@ -29,6 +29,26 @@ export type SvgPresetId = 'paw' | 'crown' | 'star' | 'bolt';
 
 export type SvgAttachMode = 'arch' | 'hole' | 'loop';
 
+export type ImageTraceMode = 'auto' | 'luminance' | 'alpha';
+
+export type BuildPlatePresetId =
+  | 'compact-180'
+  | 'standard-220'
+  | 'medium-256'
+  | 'large-300'
+  | 'custom';
+
+export interface BuildPlateSize {
+  presetId: BuildPlatePresetId;
+  label: string;
+  /** Printable bed X width in mm */
+  widthMm: number;
+  /** Printable bed Y depth in mm (Z axis in Three.js) */
+  depthMm: number;
+  /** Printable Z vertical height in mm (Y axis in Three.js) */
+  heightMm: number;
+}
+
 export interface ImportedImagePixels {
   width: number;
   height: number;
@@ -73,8 +93,11 @@ export interface ProjectConfig {
   svgRawContent: string;
   svgFileName: string;
   imagePixels: ImportedImagePixels | null;
-  imageThreshold: number; // 20 - 235
+  imageThreshold: number; // 15 - 240
   imageInvert: boolean;
+  imageTraceMode: ImageTraceMode;
+  imageSmoothness: number; // 0 - 3
+  imageDespeckle: number; // 0 - 4
   svgBorderMm: number; // 1.5 - 6
   svgAttachMode: SvgAttachMode;
   // Name-Sign specific

@@ -1,4 +1,5 @@
 import type {
+  BuildPlateSize,
   FilamentColor,
   FilamentFinishId,
   FontStyleId,
@@ -6,6 +7,39 @@ import type {
   TemplateId,
   TemplateMeta,
 } from '../types/project';
+
+export const BUILD_PLATE_PRESETS: BuildPlateSize[] = [
+  {
+    presetId: 'compact-180',
+    label: '180 × 180 mm (Compacta / A1 Mini)',
+    widthMm: 180,
+    depthMm: 180,
+    heightMm: 180,
+  },
+  {
+    presetId: 'standard-220',
+    label: '220 × 220 mm (Padrão / Ender 3)',
+    widthMm: 220,
+    depthMm: 220,
+    heightMm: 250,
+  },
+  {
+    presetId: 'medium-256',
+    label: '256 × 256 mm (Bambu A1 / P1S)',
+    widthMm: 256,
+    depthMm: 256,
+    heightMm: 256,
+  },
+  {
+    presetId: 'large-300',
+    label: '300 × 300 mm (Mesa Grande)',
+    widthMm: 300,
+    depthMm: 300,
+    heightMm: 300,
+  },
+];
+
+export const DEFAULT_BUILD_PLATE: BuildPlateSize = BUILD_PLATE_PRESETS[2]; // 256 × 256 × 256 mm
 
 export const TEMPLATES: Record<TemplateId, TemplateMeta> = {
   'heart-name': {
@@ -178,6 +212,9 @@ const SHARED_EXTRA_DEFAULTS = {
   imagePixels: null,
   imageThreshold: 140,
   imageInvert: false,
+  imageTraceMode: 'auto' as const,
+  imageSmoothness: 2,
+  imageDespeckle: 1,
   svgBorderMm: 2.8,
   svgAttachMode: 'arch' as const,
 };

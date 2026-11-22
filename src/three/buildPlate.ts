@@ -1,20 +1,25 @@
 import * as THREE from 'three';
+import { DEFAULT_BUILD_PLATE } from '../core/projectDefaults';
+import type { BuildPlateSize } from '../types/project';
 
 export interface BuildPlateRig {
   group: THREE.Group;
   contactShadow: THREE.Mesh;
   updateShadowForBounds: (widthMm: number, depthMm: number) => void;
   setTheme: (theme: 'light' | 'dark') => void;
+  setSize: (size: BuildPlateSize) => void;
   dispose: () => void;
 }
 
 /**
  * Generates a high-resolution procedural PEI textured 3D printer bed albedo texture
- * with 10mm minor grid, 50mm major grid, and clean millimeter markings (240 x 240 mm).
+ * with 10mm minor grid, 50mm major grid aligned to center, and live millimeter markings.
  */
 function createBuildPlateAlbedoTexture(
   maxAnisotropy: number,
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark',
+  widthMm: number,
+  depthMm: number
 ): THREE.CanvasTexture {
   const size = 1024;
   const canvas = document.createElement('canvas');
@@ -41,38 +46,55 @@ function createBuildPlateAlbedoTexture(
     ctx.fillRect(x, y, 2, 2);
   }
 
-  const bedMm = 240;
-  const pxPerMm = size / bedMm;
+  const pxPerMmX = size / Math.max(40, widthMm);
+  const pxPerMmZ = size / Math.max(40, depthMm);
+  const halfW = widthMm * 0.5;
+  const halfD = depthMm * 0.5;
+  const center = size * 0.5;
 
-  // Minor 10mm grid
+  // Minor 10mm grid centered on (0, 0)
   ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.14)' : 'rgba(71, 85, 105, 0.14)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let mm = 10; mm < bedMm; mm += 10) {
+  for (let mm = 10; mm < halfW; mm += 10) {
     if (mm % 50 === 0) continue;
-    const p = mm * pxPerMm;
-    ctx.moveTo(p, 0);
-    ctx.lineTo(p, size);
-    ctx.moveTo(0, p);
-    ctx.lineTo(size, p);
+    const dx = mm * pxPerMmX;
+    ctx.moveTo(center + dx, 0);
+    ctx.lineTo(center + dx, size);
+    ctx.moveTo(center - dx, 0);
+    ctx.lineTo(center - dx, size);
+  }
+  for (let mm = 10; mm < halfD; mm += 10) {
+    if (mm % 50 === 0) continue;
+    const dz = mm * pxPerMmZ;
+    ctx.moveTo(0, center + dz);
+    ctx.lineTo(size, center + dz);
+    ctx.moveTo(0, center - dz);
+    ctx.lineTo(size, center - dz);
   }
   ctx.stroke();
 
-  // Major 50mm grid
+  // Major 50mm grid centered on (0, 0)
   ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.30)' : 'rgba(51, 65, 85, 0.28)';
   ctx.lineWidth = 1.6;
   ctx.beginPath();
-  for (let mm = 20; mm <= bedMm - 20; mm += 50) {
-    const p = mm * pxPerMm;
-    ctx.moveTo(p, 0);
-    ctx.lineTo(p, size);
-    ctx.moveTo(0, p);
-    ctx.lineTo(size, p);
+  for (let mm = 50; mm < halfW; mm += 50) {
+    const dx = mm * pxPerMmX;
+    ctx.moveTo(center + dx, 0);
+    ctx.lineTo(center + dx, size);
+    ctx.moveTo(center - dx, 0);
+    ctx.lineTo(center - dx, size);
+  }
+  for (let mm = 50; mm < halfD; mm += 50) {
+    const dz = mm * pxPerMmZ;
+    ctx.moveTo(0, center + dz);
+    ctx.lineTo(size, center + dz);
+    ctx.moveTo(0, center - dz);
+    ctx.lineTo(size, center - dz);
   }
   ctx.stroke();
 
   // Center crosshairs (X=0, Z=0)
-  const center = size * 0.5;
   ctx.strokeStyle = isDark ? 'rgba(232, 76, 92, 0.44)' : 'rgba(217, 56, 72, 0.34)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -91,7 +113,7 @@ function createBuildPlateAlbedoTexture(
   ctx.fillStyle = isDark ? 'rgba(203, 213, 225, 0.72)' : 'rgba(30, 41, 59, 0.65)';
   ctx.font = '600 18px "JetBrains Mono", monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('240 × 240 mm · PEI', center, size - 24);
+  ctx.fillText(`${Math.round(widthMm)} × ${Math.round(depthMm)} mm · PEI`, center, size - 24);
   ctx.textAlign = 'left';
   ctx.fillText('FRENTE (+Z)', 28, size - 24);
   ctx.textAlign = 'right';
@@ -170,25 +192,37 @@ function createContactShadowTexture(): THREE.CanvasTexture {
  */
 export function createBuildPlateRig(
   maxAnisotropy = 8,
-  initialTheme: 'light' | 'dark' = 'light'
+  initialTheme: 'light' | 'dark' = 'dark',
+  initialSize: BuildPlateSize = DEFAULT_BUILD_PLATE
 ): BuildPlateRig {
   const group = new THREE.Group();
   group.name = 'PrinterBuildPlate';
 
-  const disposables: { dispose: () => void }[] = [];
+  let currentTheme: 'light' | 'dark' = initialTheme;
+  let currentWidth = initialSize.widthMm;
+  let currentDepth = initialSize.depthMm;
 
-  const lightAlbedoTex = createBuildPlateAlbedoTexture(maxAnisotropy, 'light');
-  const darkAlbedoTex = createBuildPlateAlbedoTexture(maxAnisotropy, 'dark');
-  const albedoTex = initialTheme === 'dark' ? darkAlbedoTex : lightAlbedoTex;
+  let lightAlbedoTex = createBuildPlateAlbedoTexture(
+    maxAnisotropy,
+    'light',
+    currentWidth,
+    currentDepth
+  );
+  let darkAlbedoTex = createBuildPlateAlbedoTexture(
+    maxAnisotropy,
+    'dark',
+    currentWidth,
+    currentDepth
+  );
   const bumpTex = createPeiBumpTexture(maxAnisotropy);
+  bumpTex.repeat.set(currentWidth / 30, currentDepth / 30);
   const shadowTex = createContactShadowTexture();
-  disposables.push(lightAlbedoTex, darkAlbedoTex, bumpTex, shadowTex);
 
-  // 1. PEI Magnetic Top Sheet (240x240mm, top face flush at Y = 0)
-  const peiGeo = new THREE.BoxGeometry(240, 2.2, 240);
+  // 1. PEI Magnetic Top Sheet (top face flush at Y = 0)
+  let peiGeo = new THREE.BoxGeometry(currentWidth, 2.2, currentDepth);
   const peiTopMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    map: albedoTex,
+    map: currentTheme === 'dark' ? darkAlbedoTex : lightAlbedoTex,
     bumpMap: bumpTex,
     bumpScale: 0.08,
     roughness: 0.72,
@@ -199,7 +233,6 @@ export function createBuildPlateRig(
     roughness: 0.42,
     metalness: 0.65,
   });
-  disposables.push(peiGeo, peiTopMat, peiEdgeMat);
 
   const peiMesh = new THREE.Mesh(peiGeo, [
     peiEdgeMat,
@@ -215,13 +248,12 @@ export function createBuildPlateRig(
   group.add(peiMesh);
 
   // 2. Brushed Aluminum Heated Sub-Bed Frame
-  const subBedGeo = new THREE.BoxGeometry(250, 5.5, 250);
+  let subBedGeo = new THREE.BoxGeometry(currentWidth + 10, 5.5, currentDepth + 10);
   const subBedMat = new THREE.MeshStandardMaterial({
     color: 0x262c36,
     roughness: 0.34,
     metalness: 0.78,
   });
-  disposables.push(subBedGeo, subBedMat);
 
   const subBed = new THREE.Mesh(subBedGeo, subBedMat);
   subBed.position.y = -4.95;
@@ -248,14 +280,13 @@ export function createBuildPlateRig(
   });
   tabGeo.rotateX(Math.PI * 0.5);
   const tabMat = new THREE.MeshStandardMaterial({
-    color: 0xcbd4e1,
+    color: currentTheme === 'dark' ? 0x3b465a : 0xcbd4e1,
     roughness: 0.36,
     metalness: 0.62,
   });
-  disposables.push(tabGeo, tabMat);
 
   const frontTab = new THREE.Mesh(tabGeo, tabMat);
-  frontTab.position.set(0, -0.35, 119.5);
+  frontTab.position.set(0, -0.35, currentDepth * 0.5 - 0.5);
   frontTab.userData.excludeFromExport = true;
   group.add(frontTab);
 
@@ -266,20 +297,24 @@ export function createBuildPlateRig(
     roughness: 0.42,
     metalness: 0.25,
   });
-  disposables.push(clipGeo, clipMat);
 
-  const corners: [number, number][] = [
-    [-117, -117],
-    [117, -117],
-    [-117, 117],
-    [117, 117],
+  const cornerSigns: [number, number][] = [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
   ];
-  for (const [cx, cz] of corners) {
+  const cornerClips: THREE.Mesh[] = cornerSigns.map(([sx, sz]) => {
     const clip = new THREE.Mesh(clipGeo, clipMat);
-    clip.position.set(cx, -4.2, cz);
+    clip.position.set(
+      sx * (currentWidth * 0.5 - 3),
+      -4.2,
+      sz * (currentDepth * 0.5 - 3)
+    );
     clip.userData.excludeFromExport = true;
     group.add(clip);
-  }
+    return clip;
+  });
 
   // 5. Soft Radial Contact Shadow Plane directly on bed surface (Y = 0.08mm)
   const shadowGeo = new THREE.PlaneGeometry(1, 1);
@@ -288,12 +323,11 @@ export function createBuildPlateRig(
     map: shadowTex,
     transparent: true,
     depthWrite: false,
-    opacity: 0.9,
+    opacity: currentTheme === 'dark' ? 0.55 : 0.9,
     polygonOffset: true,
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
-  disposables.push(shadowGeo, shadowMat);
 
   const contactShadow = new THREE.Mesh(shadowGeo, shadowMat);
   contactShadow.position.set(0, 0.08, 0);
@@ -302,14 +336,13 @@ export function createBuildPlateRig(
   group.add(contactShadow);
 
   // Subtle infinite matte studio floor far below the heated bed
-  const studioFloorGeo = new THREE.PlaneGeometry(2400, 2400);
+  const studioFloorGeo = new THREE.PlaneGeometry(2800, 2800);
   studioFloorGeo.rotateX(-Math.PI * 0.5);
   const studioFloorMat = new THREE.MeshStandardMaterial({
-    color: initialTheme === 'dark' ? 0x111620 : 0xeceff3,
+    color: currentTheme === 'dark' ? 0x111620 : 0xeceff3,
     roughness: 0.95,
     metalness: 0.0,
   });
-  disposables.push(studioFloorGeo, studioFloorMat);
 
   const studioFloor = new THREE.Mesh(studioFloorGeo, studioFloorMat);
   studioFloor.position.y = -8.2;
@@ -326,6 +359,7 @@ export function createBuildPlateRig(
       contactShadow.scale.set(sx, 1, sz);
     },
     setTheme: (theme: 'light' | 'dark') => {
+      currentTheme = theme;
       const isDark = theme === 'dark';
       peiTopMat.map = isDark ? darkAlbedoTex : lightAlbedoTex;
       peiTopMat.needsUpdate = true;
@@ -333,8 +367,60 @@ export function createBuildPlateRig(
       studioFloorMat.color.setHex(isDark ? 0x111620 : 0xeceff3);
       shadowMat.opacity = isDark ? 0.55 : 0.9;
     },
+    setSize: (size: BuildPlateSize) => {
+      const nextW = Math.max(100, Math.min(450, Math.round(size.widthMm)));
+      const nextD = Math.max(100, Math.min(450, Math.round(size.depthMm)));
+      if (nextW === currentWidth && nextD === currentDepth) return;
+
+      currentWidth = nextW;
+      currentDepth = nextD;
+
+      const prevLight = lightAlbedoTex;
+      const prevDark = darkAlbedoTex;
+      lightAlbedoTex = createBuildPlateAlbedoTexture(maxAnisotropy, 'light', nextW, nextD);
+      darkAlbedoTex = createBuildPlateAlbedoTexture(maxAnisotropy, 'dark', nextW, nextD);
+      peiTopMat.map = currentTheme === 'dark' ? darkAlbedoTex : lightAlbedoTex;
+      peiTopMat.needsUpdate = true;
+      prevLight.dispose();
+      prevDark.dispose();
+
+      bumpTex.repeat.set(nextW / 30, nextD / 30);
+
+      const prevPeiGeo = peiGeo;
+      peiGeo = new THREE.BoxGeometry(nextW, 2.2, nextD);
+      peiMesh.geometry = peiGeo;
+      prevPeiGeo.dispose();
+
+      const prevSubGeo = subBedGeo;
+      subBedGeo = new THREE.BoxGeometry(nextW + 10, 5.5, nextD + 10);
+      subBed.geometry = subBedGeo;
+      prevSubGeo.dispose();
+
+      frontTab.position.set(0, -0.35, nextD * 0.5 - 0.5);
+      cornerClips.forEach((clip, idx) => {
+        const [sx, sz] = cornerSigns[idx];
+        clip.position.set(sx * (nextW * 0.5 - 3), -4.2, sz * (nextD * 0.5 - 3));
+      });
+    },
     dispose: () => {
-      for (const d of disposables) d.dispose();
+      lightAlbedoTex.dispose();
+      darkAlbedoTex.dispose();
+      bumpTex.dispose();
+      shadowTex.dispose();
+      peiGeo.dispose();
+      peiTopMat.dispose();
+      peiEdgeMat.dispose();
+      subBedGeo.dispose();
+      subBedMat.dispose();
+      tabGeo.dispose();
+      tabMat.dispose();
+      clipGeo.dispose();
+      clipMat.dispose();
+      shadowGeo.dispose();
+      shadowMat.dispose();
+      studioFloorGeo.dispose();
+      studioFloorMat.dispose();
     },
   };
 }
+

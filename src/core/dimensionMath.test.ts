@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BUILD_PLATE_MARGIN_MM,
+  clampDimensionsToBounds,
   getTemplateDimensionBounds,
   scaleDimensions,
   scaleDimensionsFromCorner,
@@ -50,3 +52,54 @@ test('scaleDimensionsFromCorner scales X and Z independently when unlocked or al
   assert.equal(lockedCorner.heightMm, 96);
   assert.equal(lockedCorner.depthMm, 48);
 });
+
+test('getTemplateDimensionBounds strictly caps object dimensions to the chosen build plate', () => {
+  const smallBed = {
+    presetId: 'compact-180' as const,
+    label: '180 × 180 mm',
+    widthMm: 180,
+    depthMm: 180,
+    heightMm: 180,
+  };
+  const largeBed = {
+    presetId: 'large-300' as const,
+    label: '300 × 300 mm',
+    widthMm: 300,
+    depthMm: 300,
+    heightMm: 300,
+  };
+
+  const smallSignBounds = getTemplateDimensionBounds('name-sign', smallBed);
+  const largeSignBounds = getTemplateDimensionBounds('name-sign', largeBed);
+
+  assert.equal(smallSignBounds.maxWidthMm, 180 - BUILD_PLATE_MARGIN_MM);
+  assert.equal(largeSignBounds.maxWidthMm, 300 - BUILD_PLATE_MARGIN_MM);
+
+  // Box letter in separated two-row layout reserves room for both shell + front lid
+  const sepBoxBounds = getTemplateDimensionBounds('box-letter', smallBed, {
+    boxLetterLayout: 'separated',
+  });
+  assert.ok(
+    sepBoxBounds.maxHeightMm * 2 + 24 <= smallBed.depthMm - BUILD_PLATE_MARGIN_MM,
+    'separated two-row box letter height must fit cleanly on the build plate'
+  );
+});
+
+test('clampDimensionsToBounds proportionally shrinks oversized models when switching to a smaller bed', () => {
+  const smallBed = {
+    presetId: 'compact-180' as const,
+    label: '180 × 180 mm',
+    widthMm: 180,
+    depthMm: 180,
+    heightMm: 180,
+  };
+  const bounds = getTemplateDimensionBounds('name-sign', smallBed);
+
+  const oversized = { widthMm: 260, heightMm: 65, depthMm: 32 };
+  const clamped = clampDimensionsToBounds(oversized, bounds, true);
+
+  assert.equal(clamped.widthMm, bounds.maxWidthMm);
+  assert.ok(clamped.heightMm < oversized.heightMm && clamped.heightMm >= bounds.minHeightMm);
+  assert.ok(clamped.depthMm < oversized.depthMm && clamped.depthMm >= bounds.minDepthMm);
+});
+

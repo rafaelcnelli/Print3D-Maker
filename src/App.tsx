@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ControlDock } from './components/ControlDock';
+import {
+  ImageVectorizeModal,
+  type ApprovedVectorizeResult,
+  type ImageVectorizeDraft,
+} from './components/ImageVectorizeModal';
 import { SelectionMeasureCard } from './components/SelectionMeasureCard';
 import { TopBar } from './components/TopBar';
 import { Viewport3D, type Viewport3DHandle } from './components/Viewport3D';
 import {
+  clampDimensionsToBounds,
   extractDimensions,
   getTemplateDimensionBounds,
   scaleDimensions,
@@ -12,11 +18,13 @@ import {
 } from './core/dimensionMath';
 import {
   createDefaultConfig,
+  DEFAULT_BUILD_PLATE,
   TEMPLATES,
   validateProjectText,
 } from './core/projectDefaults';
 import { buildExportFilename } from './core/stlExporter';
 import type {
+  BuildPlateSize,
   CameraPresetId,
   PrintMetrics,
   ProjectConfig,
@@ -25,6 +33,7 @@ import type {
 } from './types/project';
 
 const THEME_STORAGE_KEY = 'molde3d-theme';
+const BED_STORAGE_KEY = 'molde3d-bed-size';
 
 function loadInitialTheme(): ThemeMode {
   try {
@@ -33,7 +42,59 @@ function loadInitialTheme(): ThemeMode {
   } catch {
     // Ignore storage access errors in restricted iframes
   }
-  return 'light';
+  return 'dark';
+}
+
+function loadInitialBuildPlate(): BuildPlateSize {
+  try {
+    const raw = window.localStorage.getItem(BED_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<BuildPlateSize>;
+      if (
+        typeof parsed.widthMm === 'number' &&
+        typeof parsed.depthMm === 'number' &&
+        typeof parsed.heightMm === 'number' &&
+        parsed.widthMm >= 100 &&
+        parsed.widthMm <= 450 &&
+        parsed.depthMm >= 100 &&
+        parsed.depthMm <= 450 &&
+        parsed.heightMm >= 100 &&
+        parsed.heightMm <= 450
+      ) {
+        const widthMm = Math.round(parsed.widthMm);
+        const depthMm = Math.round(parsed.depthMm);
+        const heightMm = Math.round(parsed.heightMm);
+        return {
+          presetId: parsed.presetId ?? 'custom',
+          label:
+            typeof parsed.label === 'string' && parsed.label.trim().length > 0
+              ? parsed.label
+              : `${widthMm} × ${depthMm} mm`,
+          widthMm,
+          depthMm,
+          heightMm,
+        };
+      }
+    }
+  } catch {
+    // Ignore storage access errors in restricted iframes
+  }
+  return DEFAULT_BUILD_PLATE;
+}
+
+function pixelsToDataUrl(pixels: {
+  width: number;
+  height: number;
+  rgba: Uint8ClampedArray;
+}): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = pixels.width;
+  canvas.height = pixels.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  const copy = new Uint8ClampedArray(pixels.rgba);
+  ctx.putImageData(new ImageData(copy, pixels.width, pixels.height), 0, 0);
+  return canvas.toDataURL('image/png');
 }
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
@@ -49,15 +110,21 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 
 export default function App() {
   const viewportRef = useRef<Viewport3DHandle | null>(null);
-  const [config, setConfig] = useState<ProjectConfig>(() =>
-    createDefaultConfig('heart-name')
-  );
+  const [buildPlate, setBuildPlate] = useState<BuildPlateSize>(loadInitialBuildPlate);
+  const [config, setConfig] = useState<ProjectConfig>(() => {
+    const initialBed = loadInitialBuildPlate();
+    const initial = createDefaultConfig('heart-name');
+    const bounds = getTemplateDimensionBounds(initial.template, initialBed);
+    const clamped = clampDimensionsToBounds(extractDimensions(initial), bounds, true);
+    return { ...initial, ...clamped };
+  });
   const [cameraPreset, setCameraPreset] = useState<CameraPresetId>('iso');
   const [cameraNonce, setCameraNonce] = useState(0);
   const [theme, setTheme] = useState<ThemeMode>(loadInitialTheme);
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [pieceSelected, setPieceSelected] = useState(false);
   const [lockProportions, setLockProportions] = useState(true);
+  const [vectorizeDraft, setVectorizeDraft] = useState<ImageVectorizeDraft | null>(null);
   const [metrics, setMetrics] = useState<PrintMetrics>({
     widthMm: 65,
     heightMm: 55,
@@ -81,13 +148,27 @@ export default function App() {
     config.template === 'svg-keychain' ? null : textValidation.error;
 
   const dimensionBounds = useMemo(
-    () => getTemplateDimensionBounds(config.template),
-    [config.template]
+    () =>
+      getTemplateDimensionBounds(config.template, buildPlate, {
+        boxLetterLayout: config.boxLetterLayout,
+        svgAttachMode: config.svgAttachMode,
+      }),
+    [config.template, buildPlate, config.boxLetterLayout, config.svgAttachMode]
   );
+
+  // Persist build plate size to localStorage
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(BED_STORAGE_KEY, JSON.stringify(buildPlate));
+    } catch {
+      // Ignore storage access errors in restricted iframes
+    }
+  }, [buildPlate]);
 
   // Keyboard shortcuts: "H" toggles Cinema/Zen Mode, "Escape" deselects piece
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (vectorizeDraft) return;
       if (e.key === 'Escape') {
         setPieceSelected(false);
         return;
@@ -107,7 +188,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [vectorizeDraft]);
 
   // Sync theme mode to <html class="dark"> and localStorage
   useEffect(() => {
@@ -125,52 +206,161 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
 
-  // Auto-dismiss export confirmation banner cleanly
+  // Auto-dismiss status/export confirmation banner cleanly
   useEffect(() => {
     if (!exportNotice) return;
-    const id = window.setTimeout(() => setExportNotice(null), 3600);
+    const id = window.setTimeout(() => setExportNotice(null), 3800);
     return () => window.clearTimeout(id);
   }, [exportNotice]);
 
-  const handleSelectTemplate = useCallback((template: TemplateId) => {
+  const handleChangeBuildPlate = useCallback((nextBed: BuildPlateSize) => {
+    setBuildPlate(nextBed);
     setConfig((prev) => {
-      const defaults = createDefaultConfig(template);
-      if (template === 'svg-keychain' || prev.template === 'svg-keychain') {
-        return defaults;
+      const nextBounds = getTemplateDimensionBounds(prev.template, nextBed, {
+        boxLetterLayout: prev.boxLetterLayout,
+        svgAttachMode: prev.svgAttachMode,
+      });
+      const current = extractDimensions(prev);
+      const clamped = clampDimensionsToBounds(current, nextBounds, true);
+      const wasClamped =
+        clamped.widthMm !== current.widthMm ||
+        clamped.heightMm !== current.heightMm ||
+        clamped.depthMm !== current.depthMm;
+      if (wasClamped) {
+        setExportNotice(
+          `Peça redimensionada automaticamente para caber na mesa ${nextBed.widthMm}×${nextBed.depthMm} mm.`
+        );
       }
-      const prevValidation = validateProjectText(prev.text, 14);
-      const isPreviousDefault = Object.values(TEMPLATES).some(
-        (t) => t.defaultText.toUpperCase() === prevValidation.normalized
-      );
-      return {
-        ...defaults,
-        text:
-          prevValidation.valid && !isPreviousDefault
-            ? prev.text
-            : defaults.text,
-      };
+      return wasClamped ? { ...prev, ...clamped } : prev;
     });
-    setCameraPreset('iso');
-    setCameraNonce((n) => n + 1);
   }, []);
 
-  const handleUpdateConfig = useCallback((patch: Partial<ProjectConfig>) => {
-    setConfig((prev) => ({ ...prev, ...patch }));
+  const handleSelectTemplate = useCallback(
+    (template: TemplateId) => {
+      setConfig((prev) => {
+        const defaults = createDefaultConfig(template);
+        const bounds = getTemplateDimensionBounds(template, buildPlate, {
+          boxLetterLayout: defaults.boxLetterLayout,
+          svgAttachMode: defaults.svgAttachMode,
+        });
+        const clamped = clampDimensionsToBounds(extractDimensions(defaults), bounds, true);
+        if (template === 'svg-keychain' || prev.template === 'svg-keychain') {
+          return { ...defaults, ...clamped };
+        }
+        const prevValidation = validateProjectText(prev.text, 14);
+        const isPreviousDefault = Object.values(TEMPLATES).some(
+          (t) => t.defaultText.toUpperCase() === prevValidation.normalized
+        );
+        return {
+          ...defaults,
+          ...clamped,
+          text:
+            prevValidation.valid && !isPreviousDefault
+              ? prev.text
+              : defaults.text,
+        };
+      });
+      setCameraPreset('iso');
+      setCameraNonce((n) => n + 1);
+    },
+    [buildPlate]
+  );
+
+  const handleUpdateConfig = useCallback(
+    (patch: Partial<ProjectConfig>) => {
+      setConfig((prev) => {
+        const merged = { ...prev, ...patch };
+        if (
+          patch.boxLetterLayout !== undefined ||
+          patch.svgAttachMode !== undefined
+        ) {
+          const nextBounds = getTemplateDimensionBounds(merged.template, buildPlate, {
+            boxLetterLayout: merged.boxLetterLayout,
+            svgAttachMode: merged.svgAttachMode,
+          });
+          const clamped = clampDimensionsToBounds(
+            extractDimensions(merged),
+            nextBounds,
+            true
+          );
+          return { ...merged, ...clamped };
+        }
+        return merged;
+      });
+    },
+    [buildPlate]
+  );
+
+  const handleOpenVectorizeDraft = useCallback((draft: ImageVectorizeDraft) => {
+    setVectorizeDraft(draft);
   }, []);
 
-  const handleDimensionsBatchChange = useCallback((dims: Dimensions3D) => {
+  const handleReopenVectorizeModal = useCallback(() => {
+    if (!config.imagePixels) return;
+    setVectorizeDraft({
+      fileName: config.svgFileName || 'imagem.png',
+      pixels: config.imagePixels,
+      previewUrl: pixelsToDataUrl(config.imagePixels),
+      initialOptions: {
+        threshold: config.imageThreshold,
+        invert: config.imageInvert,
+        traceMode: config.imageTraceMode,
+        smoothness: config.imageSmoothness,
+        despeckle: config.imageDespeckle,
+      },
+    });
+  }, [
+    config.imagePixels,
+    config.svgFileName,
+    config.imageThreshold,
+    config.imageInvert,
+    config.imageTraceMode,
+    config.imageSmoothness,
+    config.imageDespeckle,
+  ]);
+
+  const handleApproveVectorize = useCallback((approved: ApprovedVectorizeResult) => {
     setConfig((prev) => ({
       ...prev,
-      widthMm: dims.widthMm,
-      heightMm: dims.heightMm,
-      depthMm: dims.depthMm,
+      svgSourceType: 'image',
+      svgFileName: approved.fileName,
+      imagePixels: approved.pixels,
+      imageThreshold: approved.options.threshold,
+      imageInvert: approved.options.invert,
+      imageTraceMode: approved.options.traceMode,
+      imageSmoothness: approved.options.smoothness,
+      imageDespeckle: approved.options.despeckle,
     }));
+    setVectorizeDraft(null);
+    setExportNotice(`Vetorização de ${approved.fileName} aprovada e aplicada ao chaveiro 3D.`);
   }, []);
+
+  const handleDimensionsBatchChange = useCallback(
+    (dims: Dimensions3D) => {
+      setConfig((prev) => {
+        const bounds = getTemplateDimensionBounds(prev.template, buildPlate, {
+          boxLetterLayout: prev.boxLetterLayout,
+          svgAttachMode: prev.svgAttachMode,
+        });
+        const clamped = clampDimensionsToBounds(dims, bounds, false);
+        return {
+          ...prev,
+          widthMm: clamped.widthMm,
+          heightMm: clamped.heightMm,
+          depthMm: clamped.depthMm,
+        };
+      });
+    },
+    [buildPlate]
+  );
 
   const handleDimensionAxisChange = useCallback(
     (axis: DimensionAxis, value: number) => {
       setConfig((prev) => {
-        const bounds = getTemplateDimensionBounds(prev.template);
+        const bounds = getTemplateDimensionBounds(prev.template, buildPlate, {
+          boxLetterLayout: prev.boxLetterLayout,
+          svgAttachMode: prev.svgAttachMode,
+        });
         const scaled = scaleDimensions(
           extractDimensions(prev),
           axis,
@@ -186,7 +376,7 @@ export default function App() {
         };
       });
     },
-    [lockProportions]
+    [lockProportions, buildPlate]
   );
 
   const handleToggleLockProportions = useCallback(() => {
@@ -199,10 +389,18 @@ export default function App() {
   }, []);
 
   const handleResetDefaults = useCallback(() => {
-    setConfig((prev) => createDefaultConfig(prev.template));
+    setConfig((prev) => {
+      const defaults = createDefaultConfig(prev.template);
+      const bounds = getTemplateDimensionBounds(defaults.template, buildPlate, {
+        boxLetterLayout: defaults.boxLetterLayout,
+        svgAttachMode: defaults.svgAttachMode,
+      });
+      const clamped = clampDimensionsToBounds(extractDimensions(defaults), bounds, true);
+      return { ...defaults, ...clamped };
+    });
     setCameraPreset('iso');
     setCameraNonce((n) => n + 1);
-  }, []);
+  }, [buildPlate]);
 
   const exportSlugLabel = useMemo(() => {
     if (config.template === 'svg-keychain') {
@@ -255,7 +453,9 @@ export default function App() {
       <TopBar
         activeTemplate={config.template}
         theme={theme}
+        buildPlate={buildPlate}
         onSelectTemplate={handleSelectTemplate}
+        onChangeBuildPlate={handleChangeBuildPlate}
         onToggleTheme={handleToggleTheme}
         onDownloadSTL={handleDownloadSTL}
         canExport={isModelValid}
@@ -266,6 +466,7 @@ export default function App() {
           ref={viewportRef}
           config={config}
           theme={theme}
+          buildPlate={buildPlate}
           cameraPreset={cameraPreset}
           cameraNonce={cameraNonce}
           isTextValid={isModelValid}
@@ -299,11 +500,12 @@ export default function App() {
           />
         )}
 
-        {/* Clean export confirmation banner */}
+        {/* Clean status / export confirmation banner */}
         {exportNotice && (
           <div
             role="status"
             aria-live="polite"
+            data-testid="status-notice"
             className={`fixed ${
               pieceSelected ? 'bottom-44 sm:bottom-48' : 'top-[68px]'
             } right-4 sm:right-6 z-20 rounded-lg border border-[#159A6E]/30 dark:border-[#34D399]/35 bg-white dark:bg-[#142922] px-3.5 py-2 text-xs font-medium text-[#14533C] dark:text-[#A7F3D0] shadow-sm`}
@@ -315,6 +517,8 @@ export default function App() {
 
       <ControlDock
         config={config}
+        bounds={dimensionBounds}
+        buildPlate={buildPlate}
         textError={displayedTextError}
         cameraPreset={cameraPreset}
         metrics={metrics}
@@ -323,6 +527,8 @@ export default function App() {
         onToggleCollapse={() => setDockCollapsed((c) => !c)}
         onToggleLockProportions={handleToggleLockProportions}
         onUpdateConfig={handleUpdateConfig}
+        onOpenVectorizeDraft={handleOpenVectorizeDraft}
+        onReopenVectorizeModal={handleReopenVectorizeModal}
         onChangeDimensionAxis={handleDimensionAxisChange}
         onSelectCamera={handleSelectCamera}
         onResetDefaults={handleResetDefaults}
@@ -330,6 +536,19 @@ export default function App() {
         onDownloadOBJ={handleDownloadOBJ}
         canExport={isModelValid}
       />
+
+      {/* Pre-Approval Raster Image Vectorization Preview Modal */}
+      {vectorizeDraft && (
+        <ImageVectorizeModal
+          draft={vectorizeDraft}
+          borderMm={config.svgBorderMm}
+          primaryColor={config.primaryColor}
+          accentColor={config.accentColor}
+          onCancel={() => setVectorizeDraft(null)}
+          onApprove={handleApproveVectorize}
+        />
+      )}
     </div>
   );
 }
+

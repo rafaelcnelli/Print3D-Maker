@@ -33,6 +33,7 @@ import {
   type SelectionGizmoRig,
 } from '../three/selectionGizmo';
 import type {
+  BuildPlateSize,
   CameraPresetId,
   PrintMetrics,
   ProjectConfig,
@@ -48,6 +49,7 @@ export interface Viewport3DHandle {
 interface Viewport3DProps {
   config: ProjectConfig;
   theme: ThemeMode;
+  buildPlate: BuildPlateSize;
   cameraPreset: CameraPresetId;
   cameraNonce: number;
   isTextValid: boolean;
@@ -262,6 +264,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
     {
       config,
       theme,
+      buildPlate,
       cameraPreset,
       cameraNonce,
       isTextValid,
@@ -287,6 +290,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
     const controlsRef = useRef<OrbitControls | null>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+    const keyLightRef = useRef<THREE.DirectionalLight | null>(null);
     const buildPlateRef = useRef<BuildPlateRig | null>(null);
     const gizmoRef = useRef<SelectionGizmoRig | null>(null);
     const bumpTexRef = useRef<THREE.CanvasTexture | null>(null);
@@ -317,6 +321,8 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
     // Latest prop refs for single-mounted Three.js event handlers
     const configRef = useRef(config);
     configRef.current = config;
+    const buildPlatePropRef = useRef(buildPlate);
+    buildPlatePropRef.current = buildPlate;
     const selectedRef = useRef(selected);
     selectedRef.current = selected;
     const lockProportionsRef = useRef(lockProportions);
@@ -410,7 +416,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
       keyLight.shadow.mapSize.set(1024, 1024);
       keyLight.shadow.camera.near = 40;
       keyLight.shadow.camera.far = 560;
-      const d = 145;
+      const d = Math.max(buildPlatePropRef.current.widthMm, buildPlatePropRef.current.depthMm) * 0.62;
       keyLight.shadow.camera.left = -d;
       keyLight.shadow.camera.right = d;
       keyLight.shadow.camera.top = d;
@@ -418,6 +424,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
       keyLight.shadow.bias = -0.0005;
       keyLight.shadow.normalBias = 0.025;
       scene.add(keyLight);
+      keyLightRef.current = keyLight;
 
       const rimLight = new THREE.DirectionalLight(0xe5f0ff, 0.72);
       rimLight.position.set(-150, 120, -165);
@@ -436,14 +443,17 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
       controls.enableDamping = !isSoftwareGl;
       controls.dampingFactor = 0.08;
       controls.minDistance = 55;
-      controls.maxDistance = 520;
+      controls.maxDistance = Math.max(
+        520,
+        Math.max(buildPlatePropRef.current.widthMm, buildPlatePropRef.current.depthMm) * 2.4
+      );
       controls.maxPolarAngle = Math.PI * 0.495;
       controls.update();
       controlsRef.current = controls;
 
       // Multi-part PEI Build Plate assembly
       const maxAniso = renderer.capabilities.getMaxAnisotropy();
-      const plateRig = createBuildPlateRig(maxAniso, theme);
+      const plateRig = createBuildPlateRig(maxAniso, theme, buildPlatePropRef.current);
       scene.add(plateRig.group);
       buildPlateRef.current = plateRig;
 
@@ -672,7 +682,10 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
 
           const { handleId, startHit, startDims, template } = dragSession;
           const locked = lockProportionsRef.current;
-          const bounds = getTemplateDimensionBounds(template);
+          const bounds = getTemplateDimensionBounds(template, buildPlatePropRef.current, {
+            boxLetterLayout: configRef.current.boxLetterLayout,
+            svgAttachMode: configRef.current.svgAttachMode,
+          });
           const isFlat =
             template === 'keychain' ||
             template === 'plaque' ||
@@ -1011,6 +1024,24 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
       requestRenderRef.current();
     }, [theme]);
 
+    // Resize PEI build plate, shadow frustum & orbit maxDistance cleanly in-place
+    useEffect(() => {
+      buildPlateRef.current?.setSize(buildPlate);
+      const maxSpan = Math.max(buildPlate.widthMm, buildPlate.depthMm);
+      if (keyLightRef.current) {
+        const d = maxSpan * 0.62;
+        keyLightRef.current.shadow.camera.left = -d;
+        keyLightRef.current.shadow.camera.right = d;
+        keyLightRef.current.shadow.camera.top = d;
+        keyLightRef.current.shadow.camera.bottom = -d;
+        keyLightRef.current.shadow.camera.updateProjectionMatrix();
+      }
+      if (controlsRef.current) {
+        controlsRef.current.maxDistance = Math.max(520, maxSpan * 2.4);
+      }
+      requestRenderRef.current();
+    }, [buildPlate]);
+
     return (
       <div
         className="relative w-full h-full overflow-hidden bg-[#ECEFF3] dark:bg-[#111620] transition-colors"
@@ -1018,6 +1049,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
         data-template={config.template}
         data-camera={cameraPreset}
         data-theme={theme}
+        data-bed={`${buildPlate.widthMm}x${buildPlate.depthMm}x${buildPlate.heightMm}`}
         data-selected={selected ? 'true' : 'false'}
         data-state={webglUnavailable ? 'fallback' : contextLost ? 'context-lost' : 'ready'}
       >

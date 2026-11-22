@@ -1,11 +1,14 @@
 import { Download, Moon, Sun } from 'lucide-react';
 import { TEMPLATE_ORDER, TEMPLATES } from '../core/projectDefaults';
-import type { TemplateId, ThemeMode } from '../types/project';
+import type { BuildPlateSize, TemplateId, ThemeMode } from '../types/project';
+import { BuildPlateSelector } from './BuildPlateSelector';
 
 interface TopBarProps {
   activeTemplate: TemplateId;
   theme: ThemeMode;
+  buildPlate: BuildPlateSize;
   onSelectTemplate: (template: TemplateId) => void;
+  onChangeBuildPlate: (next: BuildPlateSize) => void;
   onToggleTheme: () => void;
   onDownloadSTL: () => void;
   canExport: boolean;
@@ -14,7 +17,9 @@ interface TopBarProps {
 export function TopBar({
   activeTemplate,
   theme,
+  buildPlate,
   onSelectTemplate,
+  onChangeBuildPlate,
   onToggleTheme,
   onDownloadSTL,
   canExport,
@@ -22,7 +27,7 @@ export function TopBar({
   const isDark = theme === 'dark';
 
   return (
-    <header className="fixed top-0 inset-x-0 z-20 h-14 bg-[#FFFFFF]/95 dark:bg-[#131720]/96 border-b border-[#DCE1EA] dark:border-[#262E3E] px-4 sm:px-6 flex items-center justify-between gap-4 sm:gap-8 transition-colors">
+    <header className="fixed top-0 inset-x-0 z-20 h-14 bg-[#FFFFFF]/95 dark:bg-[#131720]/96 border-b border-[#DCE1EA] dark:border-[#262E3E] px-4 sm:px-6 flex items-center justify-between gap-3 sm:gap-6 transition-colors">
       {/* Zone 1: Single-element display brand wordmark */}
       <span className="font-display text-lg sm:text-xl font-bold tracking-tight text-[#171A21] dark:text-[#F1F5F9] whitespace-nowrap shrink-0">
         Molde3D
@@ -31,7 +36,7 @@ export function TopBar({
       {/* Zone 2: Clean single-line project template links */}
       <nav
         aria-label="Projetos prontos"
-        className="flex items-center gap-1 sm:gap-3.5 lg:gap-5 overflow-x-auto no-scrollbar min-w-0"
+        className="flex items-center gap-1 sm:gap-3 lg:gap-4 overflow-x-auto no-scrollbar min-w-0"
       >
         {TEMPLATE_ORDER.map((id) => {
           const meta = TEMPLATES[id];
@@ -60,8 +65,13 @@ export function TopBar({
         })}
       </nav>
 
-      {/* Zone 3: Theme selector + Primary action CTA */}
+      {/* Zone 3: Build plate selector + Theme selector + Primary action CTA */}
       <div className="flex items-center gap-2 shrink-0">
+        <BuildPlateSelector
+          buildPlate={buildPlate}
+          onChangeBuildPlate={onChangeBuildPlate}
+        />
+
         <button
           type="button"
           data-testid="theme-toggle"
@@ -91,3 +101,4 @@ export function TopBar({
     </header>
   );
 }
+

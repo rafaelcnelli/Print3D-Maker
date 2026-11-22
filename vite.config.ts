@@ -5,10 +5,18 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  const rawBase = process.env.VITE_BASE_PATH?.trim();
+  const strippedBase = rawBase ? rawBase.replace(/^\/+|\/+$/g, '') : '';
+  const normalizedBase = !rawBase
+    ? './'
+    : strippedBase.length > 0
+      ? `/${strippedBase}/`
+      : '/';
+
   return {
-    // Relative base path ('./') ensures assets load properly on GitHub Pages
-    // whether deployed at https://<user>.github.io/<repo>/ or a custom root domain.
-    base: './',
+    // Uses exact GitHub Pages repo base path (e.g. /Print3D-Maker/) in CI,
+    // and relative './' locally so assets always load without 404s.
+    base: normalizedBase,
     plugins: [
       react(),
       tailwindcss(),
