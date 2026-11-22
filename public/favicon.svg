@@ -1,46 +1,54 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#1E2430" />
-      <stop offset="100%" stop-color="#12161F" />
+    <linearGradient id="p3dBg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1B2230" />
+      <stop offset="100%" stop-color="#0E121B" />
     </linearGradient>
-    <linearGradient id="heartFront" x1="14" y1="14" x2="50" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#F26457" />
-      <stop offset="55%" stop-color="#D93848" />
-      <stop offset="100%" stop-color="#B62837" />
+    <linearGradient id="p3dTop" x1="16" y1="24" x2="48" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF7D6B" />
+      <stop offset="100%" stop-color="#E54856" />
     </linearGradient>
-    <linearGradient id="heartDepth" x1="12" y1="12" x2="52" y2="54" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#9A202D" />
-      <stop offset="100%" stop-color="#6E141E" />
+    <linearGradient id="p3dLeft" x1="14" y1="31" x2="32" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E04352" />
+      <stop offset="100%" stop-color="#B92434" />
+    </linearGradient>
+    <linearGradient id="p3dRight" x1="32" y1="31" x2="50" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A81F2E" />
+      <stop offset="100%" stop-color="#76131E" />
+    </linearGradient>
+    <linearGradient id="p3dNozzle" x1="25" y1="7" x2="39" y2="23" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0" />
+      <stop offset="100%" stop-color="#94A3B8" />
     </linearGradient>
   </defs>
 
-  <!-- Rounded Studio Badge -->
-  <rect width="64" height="64" rx="15" fill="url(#bg)" />
-  <rect x="1.5" y="1.5" width="61" height="61" rx="13.5" stroke="#2E3748" stroke-width="1.5" />
+  <!-- Studio Rounded Tile -->
+  <rect width="64" height="64" rx="15" fill="url(#p3dBg)" />
+  <rect x="1.5" y="1.5" width="61" height="61" rx="13.5" stroke="#2D374B" stroke-width="1.5" />
 
-  <!-- Subtle 3D Print Bed Isometric Grid Lines -->
-  <path d="M10 49L32 57L54 49" stroke="#2D3648" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-  <path d="M16 45L32 51L48 45" stroke="#252D3D" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Subtle 3D Print Bed Grid Perspective -->
+  <path d="M9 48.5L32 57.5L55 48.5" stroke="#263042" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M15 44.5L32 51.5L49 44.5" stroke="#202838" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
 
-  <!-- 3D Extruded Heart Back Layer (Isometric Depth) -->
-  <path
-    d="M35 49.5C35 49.5 16 37.8 16 24.5C16 18.7 20.4 14.5 25.8 14.5C29.3 14.5 32.5 16.4 35 19.6C37.5 16.4 40.7 14.5 44.2 14.5C49.6 14.5 54 18.7 54 24.5C54 37.8 35 49.5 35 49.5Z"
-    fill="url(#heartDepth)"
-  />
+  <!-- Extruder Printhead & Brass/Steel Nozzle -->
+  <rect x="24" y="7" width="16" height="6.5" rx="2.5" fill="url(#p3dNozzle)" />
+  <rect x="28" y="13.5" width="8" height="3" rx="1" fill="#64748B" />
+  <path d="M28.5 16.5H35.5L33.1 21.4H30.9L28.5 16.5Z" fill="#F59E0B" />
 
-  <!-- 3D Sculpted Heart Front Layer with Vertical Letter-Column Ribs -->
-  <path
-    d="M30 47.5C30 47.5 11 35.8 11 22.5C11 16.7 15.4 12.5 20.8 12.5C24.3 12.5 27.5 14.4 30 17.6C32.5 14.4 35.7 12.5 39.2 12.5C44.6 12.5 49 16.7 49 22.5C49 35.8 30 47.5 30 47.5Z"
-    fill="url(#heartFront)"
-  />
+  <!-- Isometric 3D Printed Cube (Layered Extrusion) -->
+  <!-- Top Diamond Face -->
+  <path d="M32 26.4L48 33.8L32 41.2L16 33.8L32 26.4Z" fill="url(#p3dTop)" />
+  <!-- Left Front Face -->
+  <path d="M16 33.8L32 41.2V54.8L16 47.4V33.8Z" fill="url(#p3dLeft)" />
+  <!-- Right Shadow Face -->
+  <path d="M48 33.8L32 41.2V54.8L48 47.4V33.8Z" fill="url(#p3dRight)" />
 
-  <!-- Vertical 3D Letter-Slice Highlights (Dual-View Heart+Name Signature) -->
-  <path d="M19 13.5V35.5" stroke="#171B24" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round" />
-  <path d="M26.5 15V43" stroke="#171B24" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round" />
-  <path d="M33.5 15V43" stroke="#171B24" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round" />
-  <path d="M41 13.5V35.5" stroke="#171B24" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round" />
+  <!-- Molten Filament Strand & Extruded Bead on Top Face -->
+  <path d="M32 21.4V32.6" stroke="#FF7D6B" stroke-width="2.4" stroke-linecap="round" />
+  <ellipse cx="32" cy="33.4" rx="2.8" ry="1.45" fill="#FFE4E6" />
 
-  <!-- Negative Keyring Hole on First Letter Top -->
-  <circle cx="15.8" cy="18.2" r="2.1" fill="#181D27" stroke="#FCA5A5" stroke-opacity="0.55" stroke-width="0.9" />
+  <!-- Crisp Layer Lines & Highlight Edge -->
+  <path d="M17.2 38.4L32 45.2L46.8 38.4" stroke="#111620" stroke-opacity="0.28" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M17.2 42.9L32 49.7L46.8 42.9" stroke="#111620" stroke-opacity="0.28" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M32 41.2V54.8" stroke="#FFE4E6" stroke-opacity="0.35" stroke-width="1.1" stroke-linecap="round" />
 </svg>

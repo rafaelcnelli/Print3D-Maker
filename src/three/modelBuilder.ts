@@ -268,12 +268,13 @@ function buildHeartNameModel(
 
     let finalLettersGeo: THREE.BufferGeometry = warpedGeo;
 
-    // Default negative keyring arch ("arco negativo") carved at the top of the first letter
+    // Default negative keyring arch ("arco negativo") carved at the top of the 1st or 2nd letter (whichever fits best)
     if (config.keyringArch && builtText.firstLetterShapes.length > 0) {
       const anchor = findFirstLetterTopAnchor(
         builtText.firstLetterShapes,
         builtText.firstLetterCapY,
-        (x) => getHeartYBounds(x, W, H, minPadRatio).yMax
+        (x) => getHeartYBounds(x, W, H, minPadRatio).yMax,
+        builtText.secondLetterShapes
       );
       const heartAtAnchor = getHeartYBounds(anchor.x, W, H, minPadRatio);
       const topSurfaceY = isSolidFront
@@ -282,18 +283,20 @@ function buildHeartNameModel(
       const topEdgeZ = baselineZ - anchor.topY + zBackOffset;
 
       const majorRadius = THREE.MathUtils.clamp(
-        Math.min(D * 0.16, H * 0.065),
-        2.8,
-        5.2
+        Math.min(anchor.recommendedMajorRadius, D * 0.145, H * 0.055),
+        2.1,
+        2.75
       );
       const tubeRadius = THREE.MathUtils.clamp(
-        Math.min(anchor.solidWidth * 0.28, majorRadius * 0.36),
-        1.15,
-        1.85
+        anchor.recommendedTubeRadius,
+        0.85,
+        1.15
       );
 
+      // Shift center slightly outward (+0.18mm in Y, -0.18mm in Z) so the tunnel never
+      // pinches the top/back corner ridge while keeping a thick internal arch bridge.
       finalLettersGeo = subtractNegativeKeyringArch(warpedGeo, {
-        center: [anchor.x, topSurfaceY - 0.5, topEdgeZ - 0.5],
+        center: [anchor.x, topSurfaceY + 0.18, topEdgeZ - 0.18],
         majorRadius,
         tubeRadius,
         rotation: [0, Math.PI * 0.5, 0],
@@ -476,30 +479,9 @@ function buildNameSignModel(
     const baseTopY = config.signBaseStyle === 'stepped' ? baseH + 2.2 : baseH - 0.6;
     textGeo.translate(0, baseTopY, -letterDepth * 0.5);
 
-    let finalTextGeo: THREE.BufferGeometry = textGeo;
-    if (config.keyringArch && builtText.firstLetterShapes.length > 0) {
-      const anchor = findFirstLetterTopAnchor(
-        builtText.firstLetterShapes,
-        builtText.firstLetterCapY
-      );
-      const majorRadius = THREE.MathUtils.clamp(letterDepth * 0.34, 3.0, 4.5);
-      const tubeRadius = THREE.MathUtils.clamp(
-        Math.min(anchor.solidWidth * 0.27, majorRadius * 0.36),
-        1.15,
-        1.65
-      );
-      finalTextGeo = subtractNegativeKeyringArch(textGeo, {
-        center: [anchor.x, baseTopY + anchor.topY - 0.45, -letterDepth * 0.5 - 0.45],
-        majorRadius,
-        tubeRadius,
-        rotation: [0, Math.PI * 0.5, 0],
-      });
-      textGeo.dispose();
-    }
+    geometries.push(textGeo);
 
-    geometries.push(finalTextGeo);
-
-    const textMesh = configurePrintableMesh(new THREE.Mesh(finalTextGeo, primaryMat));
+    const textMesh = configurePrintableMesh(new THREE.Mesh(textGeo, primaryMat));
     textMesh.name = 'SignMainLetters';
     group.add(textMesh);
   }
@@ -628,16 +610,28 @@ function buildKeychainModel(
   if (config.keyringArch && builtText.firstLetterShapes.length > 0) {
     const anchor = findFirstLetterTopAnchor(
       builtText.firstLetterShapes,
-      builtText.firstLetterCapY
+      builtText.firstLetterCapY,
+      isHeart
+        ? (x) => getHeartYBounds(textCenterX + x, W, heartH).yMax
+        : undefined,
+      builtText.secondLetterShapes
     );
     const archX = textCenterX + anchor.x;
     const archBackZ = isHeart
       ? -(getHeartYBounds(archX, W, heartH).yMax - heartH * 0.5)
       : -H * 0.5;
-    const majorRadius = THREE.MathUtils.clamp(totalThick * 0.52, 2.6, 4.2);
-    const tubeRadius = THREE.MathUtils.clamp(totalThick * 0.21, 1.05, 1.55);
+    const majorRadius = THREE.MathUtils.clamp(
+      Math.min(anchor.recommendedMajorRadius, totalThick * 0.48),
+      2.1,
+      2.75
+    );
+    const tubeRadius = THREE.MathUtils.clamp(
+      Math.min(anchor.recommendedTubeRadius, totalThick * 0.2),
+      0.85,
+      1.15
+    );
     keychainArchPlacement = {
-      center: [archX, totalThick - 0.3, archBackZ - 0.3],
+      center: [archX, totalThick + 0.12, archBackZ - 0.12],
       majorRadius,
       tubeRadius,
       rotation: [0, Math.PI * 0.5, 0],
@@ -766,28 +760,12 @@ function buildPlaqueModel(
   const cornerR = config.plaqueRounded ? Math.min(10, H * 0.22) : 2.2;
   const bevel = Math.min(config.bevelMm, 0.8);
 
-  // Compute primary text shapes first so we know exact first-letter anchor for negative arch
+  // Compute primary text shapes
   const cleanSub = config.subtitle.trim();
   const hasSub = cleanSub.length > 0;
   const usableW = (W - (config.plaqueMountHoles ? 32 : 20)) * (config.textScale / 100);
   const mainH = hasSub ? H * 0.34 : H * 0.46;
   const mainText = buildVectorTextShapes(config.text, config.fontStyle, usableW, mainH, 0.14);
-
-  let plaqueArchPlacement: NegativeArchPlacement | null = null;
-  if (config.keyringArch && mainText.firstLetterShapes.length > 0) {
-    const anchor = findFirstLetterTopAnchor(
-      mainText.firstLetterShapes,
-      mainText.firstLetterCapY
-    );
-    const majorRadius = THREE.MathUtils.clamp(totalThick * 0.52, 2.8, 4.4);
-    const tubeRadius = THREE.MathUtils.clamp(totalThick * 0.21, 1.1, 1.6);
-    plaqueArchPlacement = {
-      center: [anchor.x, totalThick - 0.32, -H * 0.5 - 0.32],
-      majorRadius,
-      tubeRadius,
-      rotation: [0, Math.PI * 0.5, 0],
-    };
-  }
 
   // 1. Plaque Base Slab (with optional left/right screw holes)
   const baseShape = makeRoundedRectShape(W, H, cornerR);
@@ -797,7 +775,7 @@ function buildPlaqueModel(
     addCircularHole(baseShape, hx, 0, 2.2);
   }
 
-  let baseGeo: THREE.BufferGeometry = new THREE.ExtrudeGeometry(baseShape, {
+  const baseGeo = new THREE.ExtrudeGeometry(baseShape, {
     depth: baseThick,
     bevelEnabled: bevel > 0.05,
     bevelThickness: bevel * 0.72,
@@ -806,11 +784,6 @@ function buildPlaqueModel(
     curveSegments: 24,
   });
   baseGeo.rotateX(-Math.PI * 0.5);
-  if (plaqueArchPlacement) {
-    const carvedBase = subtractNegativeKeyringArch(baseGeo, plaqueArchPlacement);
-    baseGeo.dispose();
-    baseGeo = carvedBase;
-  }
   geometries.push(baseGeo);
 
   const baseMesh = configurePrintableMesh(new THREE.Mesh(baseGeo, accentMat));
@@ -822,7 +795,7 @@ function buildPlaqueModel(
   const frameInner = makeRoundedRectShape(W - 9.6, H - 9.6, Math.max(1.0, cornerR - 4.0));
   frameOuter.holes.push(new THREE.Path(frameInner.getPoints(48).reverse()));
 
-  let frameGeo: THREE.BufferGeometry = new THREE.ExtrudeGeometry(frameOuter, {
+  const frameGeo = new THREE.ExtrudeGeometry(frameOuter, {
     depth: reliefThick * 0.9,
     bevelEnabled: true,
     bevelThickness: 0.32,
@@ -832,11 +805,6 @@ function buildPlaqueModel(
   });
   frameGeo.rotateX(-Math.PI * 0.5);
   frameGeo.translate(0, baseThick, 0);
-  if (plaqueArchPlacement) {
-    const carvedFrame = subtractNegativeKeyringArch(frameGeo, plaqueArchPlacement);
-    frameGeo.dispose();
-    frameGeo = carvedFrame;
-  }
   geometries.push(frameGeo);
 
   const frameMesh = configurePrintableMesh(new THREE.Mesh(frameGeo, primaryMat));
@@ -958,28 +926,6 @@ function buildMonogramModel(
     }
     posAttr.needsUpdate = true;
     initGeo.computeVertexNormals();
-
-    // Optional rear-top negative keyring arch carved into the initial
-    if (config.keyringArch && builtInitial.firstLetterShapes.length > 0) {
-      const anchor = findFirstLetterTopAnchor(
-        builtInitial.firstLetterShapes,
-        builtInitial.firstLetterCapY
-      );
-      const majorRadius = THREE.MathUtils.clamp(D * 0.28, 3.2, 4.8);
-      const tubeRadius = THREE.MathUtils.clamp(
-        Math.min(anchor.solidWidth * 0.26, majorRadius * 0.36),
-        1.2,
-        1.75
-      );
-      const carved = subtractNegativeKeyringArch(initGeo, {
-        center: [anchor.x, anchor.topY - 0.5, -D * 0.5 - 0.45],
-        majorRadius,
-        tubeRadius,
-        rotation: [0, Math.PI * 0.5, 0],
-      });
-      initGeo.dispose();
-      initGeo = carved;
-    }
 
     geometries.push(initGeo);
     const initMesh = configurePrintableMesh(new THREE.Mesh(initGeo, primaryMat));
@@ -1145,28 +1091,6 @@ function buildBoxLetterModel(
     backGeo.translate(0, 0, zStart);
     rimGeo.translate(0, 0, zStart + backFloorDepth - 0.35);
     lidGeo.translate(0, 0, zStart + backFloorDepth - 0.25);
-
-    // Optional rear-top negative keyring arch on the first letter casing
-    if (config.keyringArch && builtText.firstLetterShapes.length > 0) {
-      const anchor = findFirstLetterTopAnchor(
-        builtText.firstLetterShapes,
-        builtText.firstLetterCapY
-      );
-      const majorRadius = THREE.MathUtils.clamp(D * 0.26, 3.0, 4.6);
-      const tubeRadius = THREE.MathUtils.clamp(
-        Math.min(anchor.solidWidth * 0.26, majorRadius * 0.36),
-        1.15,
-        1.7
-      );
-      const carvedBack = subtractNegativeKeyringArch(backGeo, {
-        center: [anchor.x, anchor.topY + borderMm - 0.55, zStart - 0.45],
-        majorRadius,
-        tubeRadius,
-        rotation: [0, Math.PI * 0.5, 0],
-      });
-      backGeo.dispose();
-      backGeo = carvedBack;
-    }
 
     geometries.push(backGeo, rimGeo, lidGeo);
 
@@ -1335,10 +1259,10 @@ function buildSvgKeychainModel(
 
   let archPlacement: NegativeArchPlacement | null = null;
   if (config.svgAttachMode === 'arch') {
-    const majorRadius = THREE.MathUtils.clamp(totalThick * 0.54, 2.5, 4.0);
-    const tubeRadius = THREE.MathUtils.clamp(totalThick * 0.21, 1.0, 1.5);
+    const majorRadius = THREE.MathUtils.clamp(totalThick * 0.48, 2.1, 2.75);
+    const tubeRadius = THREE.MathUtils.clamp(totalThick * 0.2, 0.88, 1.15);
     archPlacement = {
-      center: [anchor.x, totalThick - 0.28, -anchor.topY - 0.28],
+      center: [anchor.x, totalThick + 0.12, -anchor.topY - 0.12],
       majorRadius,
       tubeRadius,
       rotation: [0, Math.PI * 0.5, 0],

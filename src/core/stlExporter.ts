@@ -132,7 +132,7 @@ export function exportGroupToBinarySTL(root: THREE.Object3D): ArrayBuffer {
   const view = new DataView(buffer);
 
   // 80-byte ASCII header
-  const header = 'Molde3D Binary STL - Millimeters (Z-Up)';
+  const header = 'Print3D Maker Binary STL - Millimeters (Z-Up)';
   for (let i = 0; i < 80; i++) {
     view.setUint8(i, i < header.length ? header.charCodeAt(i) : 0x20);
   }
@@ -199,10 +199,10 @@ export function exportGroupToBinarySTL(root: THREE.Object3D): ArrayBuffer {
 /**
  * Generates an ASCII Wavefront OBJ string in millimeters (Z-up) for CAD editing.
  */
-export function exportGroupToOBJ(root: THREE.Object3D, objectName = 'Molde3D'): string {
+export function exportGroupToOBJ(root: THREE.Object3D, objectName = 'Print3D_Maker'): string {
   const { triangles, triangleCount } = extractSlicerTriangles(root);
   const lines: string[] = [
-    '# Molde3D Wavefront OBJ (mm, Z-up)',
+    '# Print3D Maker Wavefront OBJ (mm, Z-up)',
     `o ${objectName.replace(/\s+/g, '_')}`,
   ];
 
@@ -298,5 +298,5 @@ export function buildExportFilename(
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'modelo';
 
-  return `molde3d-${slugPrefix[template]}-${cleanText}.${ext}`;
+  return `print3d-maker-${slugPrefix[template]}-${cleanText}.${ext}`;
 }

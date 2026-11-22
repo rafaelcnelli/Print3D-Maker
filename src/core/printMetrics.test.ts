@@ -104,11 +104,11 @@ test('formatPrintDuration and buildExportFilename handle Portuguese text cleanly
 
   assert.equal(
     buildExportFilename('heart-name', 'CORAÇÃO', 'stl'),
-    'molde3d-coracao-nome-coracao.stl'
+    'print3d-maker-coracao-nome-coracao.stl'
   );
   assert.equal(
     buildExportFilename('keychain', 'João & Ana', 'obj'),
-    'molde3d-chaveiro-joao-ana.obj'
+    'print3d-maker-chaveiro-joao-ana.obj'
   );
 });
 

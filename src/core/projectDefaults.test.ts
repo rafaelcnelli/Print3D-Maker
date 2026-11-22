@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateProjectText } from './projectDefaults';
+import * as THREE from 'three';
+import { createDefaultConfig, TEMPLATE_ORDER, validateProjectText } from './projectDefaults';
+import { buildProjectModel } from '../three/modelBuilder';
+import { computePrintMetrics } from './stlExporter';
 
 test('validateProjectText accepts Portuguese accented names and simple symbols', () => {
   const res1 = validateProjectText('  João & Lúcia  ');
@@ -28,4 +31,35 @@ test('validateProjectText rejects excessive length and unsupported characters', 
   const badCharRes = validateProjectText('MARIA@123');
   assert.equal(badCharRes.valid, false);
   assert.ok(badCharRes.error !== null);
+});
+
+test('only heart-name and keychains enable keyring holes/arches by default and build identically without keyring on other templates', () => {
+  const allowedWithKeyring = new Set(['heart-name', 'keychain', 'svg-keychain']);
+  const matA = new THREE.MeshStandardMaterial();
+  const matB = new THREE.MeshStandardMaterial();
+
+  for (const id of TEMPLATE_ORDER) {
+    const cfg = createDefaultConfig(id);
+    assert.equal(
+      cfg.keyringArch,
+      allowedWithKeyring.has(id),
+      `${id} keyringArch default mismatch`
+    );
+
+    if (!allowedWithKeyring.has(id)) {
+      const cfgOff = { ...cfg, keyringArch: false };
+      const cfgForcedOn = { ...cfg, keyringArch: true };
+      const builtOff = buildProjectModel(cfgOff, matA, matB);
+      const builtOn = buildProjectModel(cfgForcedOn, matA, matB);
+      const mOff = computePrintMetrics(builtOff.group);
+      const mOn = computePrintMetrics(builtOn.group);
+      assert.equal(mOn.triangleCount, mOff.triangleCount, `${id} must ignore keyringArch`);
+      assert.equal(mOn.volumeCm3, mOff.volumeCm3, `${id} volume must not be carved by keyringArch`);
+      builtOff.disposeGeometries();
+      builtOn.disposeGeometries();
+    }
+  }
+
+  matA.dispose();
+  matB.dispose();
 });

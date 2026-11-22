@@ -1312,6 +1312,7 @@ function cloneAndTransformShape(
 export interface BuiltTextShapes {
   shapes: THREE.Shape[];
   firstLetterShapes: THREE.Shape[];
+  secondLetterShapes: THREE.Shape[];
   firstLetterCapY: number;
   totalWidth: number;
   minY: number;
@@ -1340,6 +1341,7 @@ export function buildVectorTextShapes(
     return {
       shapes: [],
       firstLetterShapes: [],
+      secondLetterShapes: [],
       firstLetterCapY: 0,
       totalWidth: 0,
       minY: 0,
@@ -1363,6 +1365,7 @@ export function buildVectorTextShapes(
     return {
       shapes: [],
       firstLetterShapes: [],
+      secondLetterShapes: [],
       firstLetterCapY: 0,
       totalWidth: 0,
       minY: 0,
@@ -1622,21 +1625,25 @@ export function buildVectorTextShapes(
 
   const shapes: THREE.Shape[] = [];
   const firstLetterShapes: THREE.Shape[] = [];
-  let capturedFirstLetter = false;
+  const secondLetterShapes: THREE.Shape[] = [];
+  let nonSpaceGlyphIndex = 0;
 
   for (let i = 0; i < resolved.length; i++) {
     const entry = resolved[i];
     const dx = charOffsets[i] - wordCenterX;
-    const isFirstGlyph = !capturedFirstLetter && entry.baseChar !== ' ';
-    if (isFirstGlyph) {
-      capturedFirstLetter = true;
+    let currentGlyphSlot = -1;
+    if (entry.baseChar !== ' ') {
+      currentGlyphSlot = nonSpaceGlyphIndex;
+      nonSpaceGlyphIndex++;
     }
 
     for (const sh of unitCharShapes[i]) {
       const transformed = cloneAndTransformShape(sh, dx, scaleUnitX, sy, yShift);
       shapes.push(transformed);
-      if (isFirstGlyph) {
+      if (currentGlyphSlot === 0) {
         firstLetterShapes.push(transformed);
+      } else if (currentGlyphSlot === 1) {
+        secondLetterShapes.push(transformed);
       }
     }
 
@@ -1652,6 +1659,7 @@ export function buildVectorTextShapes(
   return {
     shapes,
     firstLetterShapes,
+    secondLetterShapes,
     firstLetterCapY: 100 * sy + yShift,
     totalWidth: renderedWidth,
     minY: 0,

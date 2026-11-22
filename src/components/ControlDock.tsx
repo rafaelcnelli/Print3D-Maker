@@ -451,20 +451,7 @@ export function ControlDock({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3 pt-3 sm:pt-4">
-                      <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
-                        <input
-                          type="checkbox"
-                          data-testid="toggle-keyring-arch"
-                          checked={config.keyringArch}
-                          onChange={(e) =>
-                            onUpdateConfig({ keyringArch: e.target.checked })
-                          }
-                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
-                        />
-                        <span>Arco negativo</span>
-                      </label>
-
+                    <div className="flex items-center justify-end gap-3 pt-3 sm:pt-4">
                       <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
                         <input
                           type="checkbox"
@@ -547,18 +534,6 @@ export function ControlDock({
                             className="w-3.5 h-3.5 accent-[#D93848] rounded cursor-pointer"
                           />
                           <span>Letras unidas</span>
-                        </label>
-                        <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
-                          <input
-                            type="checkbox"
-                            data-testid="toggle-keyring-arch"
-                            checked={config.keyringArch}
-                            onChange={(e) =>
-                              onUpdateConfig({ keyringArch: e.target.checked })
-                            }
-                            className="w-3.5 h-3.5 accent-[#D93848] rounded cursor-pointer"
-                          />
-                          <span>Arco 1ª letra</span>
                         </label>
                       </div>
                     </div>
@@ -740,7 +715,7 @@ export function ControlDock({
                           }
                           className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
                         />
-                        <span>Arco negativo (1ª letra)</span>
+                        <span>Arco negativo (1ª/2ª letra)</span>
                       </label>
 
                       <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
@@ -788,26 +763,12 @@ export function ControlDock({
                     </div>
 
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <label
-                          htmlFor="sign-subtitle-input"
-                          className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]"
-                        >
-                          Subtítulo na base
-                        </label>
-                        <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
-                          <input
-                            type="checkbox"
-                            data-testid="toggle-keyring-arch"
-                            checked={config.keyringArch}
-                            onChange={(e) =>
-                              onUpdateConfig({ keyringArch: e.target.checked })
-                            }
-                            className="w-3.5 h-3.5 accent-[#D93848] rounded cursor-pointer"
-                          />
-                          <span>Arco 1ª letra</span>
-                        </label>
-                      </div>
+                      <label
+                        htmlFor="sign-subtitle-input"
+                        className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]"
+                      >
+                        Subtítulo na base
+                      </label>
                       <input
                         id="sign-subtitle-input"
                         type="text"
@@ -861,7 +822,7 @@ export function ControlDock({
                           }
                           className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
                         />
-                        <span>Arco negativo (1ª letra)</span>
+                        <span>Arco negativo (1ª/2ª letra)</span>
                       </label>
 
                       {!config.keyringArch && (
@@ -925,18 +886,6 @@ export function ControlDock({
                     </div>
 
                     <div className="flex items-center justify-between gap-2 pt-3 sm:pt-4">
-                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          data-testid="toggle-keyring-arch"
-                          checked={config.keyringArch}
-                          onChange={(e) =>
-                            onUpdateConfig({ keyringArch: e.target.checked })
-                          }
-                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
-                        />
-                        <span>Arco 1ª letra</span>
-                      </label>
 
                       <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
                         <input

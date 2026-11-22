@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Molde3D — Criador de Projetos para Impressão 3D</title>
+    <title>Print3D Maker — Criador de Projetos para Impressão 3D</title>
     <meta
       name="description"
       content="Criador rápido de projetos 3D prontos para impressão: coração com nome, letreiros, chaveiros e placas com exportação direta em STL."
     />
-    <meta property="og:title" content="Molde3D — Criador de Projetos para Impressão 3D" />
+    <meta property="og:title" content="Print3D Maker — Criador de Projetos para Impressão 3D" />
     <meta
       property="og:description"
       content="Criador rápido de projetos 3D prontos para impressão: coração com nome, letreiros, chaveiros e placas com exportação direta em STL."
@@ -16,9 +16,13 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#111620" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Print3D Maker" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
-    <link rel="alternate icon" href="%BASE_URL%favicon.svg" />
-    <link rel="apple-touch-icon" href="%BASE_URL%favicon.svg" />
+    <link rel="alternate icon" type="image/png" href="%BASE_URL%pwa-192x192.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
     <script>
       (function () {
         try {
@@ -37,7 +41,28 @@
     />
   </head>
   <body class="bg-[#ECEFF3] dark:bg-[#111620] text-[#171A21] dark:text-[#F1F5F9] antialiased selection:bg-[#D93848]/20 selection:text-[#171A21] dark:selection:text-[#F8FAFC] overflow-hidden">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Instant HTML Pre-load Fallback before React mounts -->
+      <div
+        style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#111620;color:#F1F5F9;font-family:'Plus Jakarta Sans',system-ui,sans-serif;z-index:50;"
+      >
+        <img
+          src="%BASE_URL%favicon.svg"
+          alt="Logo Print3D Maker"
+          width="84"
+          height="84"
+          style="border-radius:20px;box-shadow:0 18px 42px -10px rgba(217,56,72,0.35);"
+        />
+        <div
+          style="margin-top:16px;font-family:'Bricolage Grotesque',system-ui,sans-serif;font-size:24px;font-weight:700;letter-spacing:-0.02em;"
+        >
+          Print3D Maker
+        </div>
+        <div style="margin-top:6px;font-size:13px;color:#94A3B8;">
+          Inicializando estúdio 3D...
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

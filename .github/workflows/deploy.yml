@@ -1,4 +1,4 @@
-name: Deploy Molde3D to GitHub Pages
+name: Deploy Print3D Maker to GitHub Pages
 
 on:
   push:

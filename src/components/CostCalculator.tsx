@@ -180,7 +180,7 @@ export function CostCalculator({
           role="dialog"
           aria-label="Calculadora de custos de impressão 3D"
           data-testid="cost-calc-popover"
-          className="absolute right-0 mt-2 w-80 sm:w-[344px] rounded-xl border border-[#D5DCE6] dark:border-[#2B3548] bg-white dark:bg-[#161B26] shadow-[0_18px_44px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.65)] p-4 z-40"
+          className="fixed inset-x-3 top-16 sm:inset-x-auto sm:top-auto sm:absolute sm:right-0 sm:mt-2 sm:w-[344px] rounded-xl border border-[#D5DCE6] dark:border-[#2B3548] bg-white dark:bg-[#161B26] shadow-[0_18px_44px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.65)] p-4 z-40"
         >
           {/* Header with collapse control */}
           <div className="flex items-start justify-between gap-2 pb-3 border-b border-[#E5E9F0] dark:border-[#262E3E]">

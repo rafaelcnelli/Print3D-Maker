@@ -2,16 +2,22 @@ import * as THREE from 'three';
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 
 export interface FirstLetterTopAnchor {
-  /** Center X of the best solid horizontal run near the top edge of the first letter */
+  /** Center X of the best solid horizontal run near the top edge of the chosen letter */
   x: number;
   /** Topmost Y in 2D glyph space where the solid stroke reaches */
   topY: number;
-  /** Horizontal solid width (mm) available at that top band */
+  /** Minimum horizontal solid width (mm) available across the entire arch tunnel depth */
   solidWidth: number;
-  /** Leftmost X of the first letter */
+  /** Leftmost X of the chosen letter */
   minX: number;
-  /** Rightmost X of the first letter */
+  /** Rightmost X of the chosen letter */
   maxX: number;
+  /** Which letter was selected as the safest, strongest anchor (0 = 1st letter, 1 = 2nd letter) */
+  letterIndex: 0 | 1;
+  /** Recommended safe tunnel tube radius (mm) leaving generous side walls */
+  recommendedTubeRadius: number;
+  /** Recommended safe torus major radius (mm) */
+  recommendedMajorRadius: number;
 }
 
 export interface NegativeArchPlacement {
@@ -82,29 +88,49 @@ function isPointInPolys(x: number, y: number, polys: SampledShapePoly[]): boolea
   return false;
 }
 
+interface CandidateRunEvaluation {
+  anchor: FirstLetterTopAnchor;
+  score: number;
+}
+
+function computeRecommendedArchRadii(solidWidth: number): {
+  recommendedTubeRadius: number;
+  recommendedMajorRadius: number;
+} {
+  // Minimum 0.9mm side wall on BOTH sides of the hole (1.8mm total wall margin)
+  // and at most 21% of the stroke's minimum solid width across the tunnel depth.
+  // Capped to [0.85mm .. 1.15mm] (1.7mm .. 2.3mm hole diameter) so it fits standard
+  // keyring jump rings comfortably while never looking oversized or breaking thin strokes.
+  const maxSafeByWall = (solidWidth - 1.8) * 0.5;
+  const proportional = solidWidth * 0.21;
+  const recommendedTubeRadius = THREE.MathUtils.clamp(
+    Math.min(maxSafeByWall, proportional),
+    0.85,
+    1.15
+  );
+  // Major radius proportional to tube radius and stroke thickness, leaving a strong bridge
+  const recommendedMajorRadius = THREE.MathUtils.clamp(
+    Math.max(recommendedTubeRadius * 2.25, Math.min(solidWidth * 0.42, 2.75)),
+    2.1,
+    2.75
+  );
+  return { recommendedTubeRadius, recommendedMajorRadius };
+}
+
 /**
- * Finds the best solid anchor point right along the top edge of the first letter.
- * Handles split-top letters cleanly (e.g. V, W, U, H, K, M, N, X, Y) as well as
- * single-top letters (A, O, S, T, I, L, E, R, etc.).
- *
- * When `scoreX` is provided (e.g., Heart height yMax(x)), prefers the solid top arm
- * that sits on the strongest, tallest portion of the silhouette.
+ * Evaluates a single letter's shapes (1st or 2nd letter) across the full vertical depth
+ * of the negative keyring arch (from the top edge down to 74% of letter height) so that
+ * tapered letters (A, V, W, Y) and letters with internal counters (R, P, B, O, D) or
+ * thin serif caps are measured by their TRUE narrowest solid stroke width across the tunnel.
  */
-export function findFirstLetterTopAnchor(
-  firstLetterShapes: THREE.Shape[],
+function evaluateLetterTopCandidates(
+  letterShapes: THREE.Shape[],
   fallbackCapY: number,
+  letterIndex: 0 | 1,
   scoreX?: (x: number) => number
-): FirstLetterTopAnchor {
-  const polys = sampleShapes(firstLetterShapes);
-  if (polys.length === 0) {
-    return {
-      x: 0,
-      topY: fallbackCapY,
-      solidWidth: 8,
-      minX: -4,
-      maxX: 4,
-    };
-  }
+): CandidateRunEvaluation | null {
+  const polys = sampleShapes(letterShapes);
+  if (polys.length === 0) return null;
 
   let minX = Infinity;
   let maxX = -Infinity;
@@ -117,103 +143,201 @@ export function findFirstLetterTopAnchor(
 
   const glyphW = Math.max(1, maxX - minX);
   const topY = maxY > 0 ? maxY : fallbackCapY;
-  // Probe BOTH near the rear top edge (96%) AND ~14% inward (85%) where the top
-  // opening of the curved arch emerges so diagonal arms (V, A, W, K, Y) stay fully solid.
-  const probeOuterY = topY * 0.96;
-  const probeInnerY = topY * 0.85;
-  const samples = 96;
+  const samples = 112;
 
   interface Run {
     startX: number;
     endX: number;
     midX: number;
     width: number;
+    localTopY: number;
   }
 
-  const collectRuns = (checkFn: (x: number) => boolean): Run[] => {
-    const out: Run[] = [];
-    let inRun = false;
-    let runStart = minX;
-    for (let i = 0; i <= samples; i++) {
-      const x = minX + (i / samples) * glyphW;
-      const solid = i < samples && checkFn(x);
-      if (solid && !inRun) {
-        inRun = true;
-        runStart = x;
-      } else if (!solid && inRun) {
-        inRun = false;
-        const runEnd = minX + ((i - 1) / samples) * glyphW;
-        const w = runEnd - runStart;
-        if (w > 0.25) {
-          out.push({
-            startX: runStart,
-            endX: runEnd,
-            midX: (runStart + runEnd) * 0.5,
-            width: w,
-          });
-        }
+  const findLocalTopY = (x: number): number => {
+    for (let s = 100; s >= 75; s--) {
+      const y = topY * (s / 100);
+      if (isPointInPolys(x, y, polys)) {
+        return y;
       }
     }
-    return out;
+    return topY * 0.96;
   };
 
-  let runs = collectRuns(
-    (x) => isPointInPolys(x, probeOuterY, polys) && isPointInPolys(x, probeInnerY, polys)
-  );
-  if (runs.length === 0) {
-    runs = collectRuns((x) => isPointInPolys(x, topY * 0.93, polys));
+  // Evaluate every candidate center X across the letter by measuring the continuous solid
+  // horizontal interval [leftEdge(y), rightEdge(y)] at multiple Y depths of the tunnel.
+  // Because the arch enters at the top edge (~95% of localTopY) and curves down to ~80% of localTopY,
+  // we measure the worst-case horizontal clearance from candidateX to the nearest side edge
+  // across the tunnel depth so curved letters (S, O, C, G, B, R) and angled letters (A, V, W, Y)
+  // are placed where the stroke is widest and best centered!
+  const stepX = glyphW / samples;
+
+  const measureSymmetricWidthAt = (cx: number, yLevels: number[]): number => {
+    let minHalfWidth = Infinity;
+    for (const y of yLevels) {
+      if (!isPointInPolys(cx, y, polys)) return 0;
+      let leftDist = 0;
+      for (let d = stepX * 0.5; cx - d >= minX - stepX; d += stepX * 0.5) {
+        if (!isPointInPolys(cx - d, y, polys)) break;
+        leftDist = d;
+      }
+      let rightDist = 0;
+      for (let d = stepX * 0.5; cx + d <= maxX + stepX; d += stepX * 0.5) {
+        if (!isPointInPolys(cx + d, y, polys)) break;
+        rightDist = d;
+      }
+      const halfW = Math.min(leftDist, rightDist);
+      if (halfW < minHalfWidth) minHalfWidth = halfW;
+    }
+    return Number.isFinite(minHalfWidth) ? minHalfWidth * 2 : 0;
+  };
+
+  let bestEval: CandidateRunEvaluation | null = null;
+
+  for (let i = 1; i < samples; i++) {
+    const candidateX = minX + (i / samples) * glyphW;
+    const localTopY = findLocalTopY(candidateX);
+    // Require the column to reach near the top of the letter (>= 88% of maxY)
+    if (localTopY < topY * 0.88) continue;
+
+    // Probe across the arch depth from right at the top entrance (98.5%) down to 82% of localTopY.
+    // Including 98.5% ensures tapered apexes (like 'A') are measured by their narrow top entrance
+    // rather than wider lower sections, preventing the top opening from coming near the sloped side walls.
+    const yLevels = [
+      localTopY * 0.985,
+      localTopY * 0.95,
+      localTopY * 0.9,
+      localTopY * 0.85,
+      localTopY * 0.82,
+    ];
+    let effectiveSolidWidth = measureSymmetricWidthAt(candidateX, yLevels);
+    if (effectiveSolidWidth < 1.2) {
+      // Fallback for shallower top bars (like E, F, T, Z top horizontal bar)
+      effectiveSolidWidth = measureSymmetricWidthAt(candidateX, [
+        localTopY * 0.98,
+        localTopY * 0.94,
+        localTopY * 0.89,
+      ]);
+    }
+    if (effectiveSolidWidth < 1.0) continue;
+
+    const { recommendedTubeRadius, recommendedMajorRadius } =
+      computeRecommendedArchRadii(effectiveSolidWidth);
+
+    const silHeight = scoreX ? scoreX(candidateX) : 22;
+    const thinStrokePenalty =
+      effectiveSolidWidth < 3.4 ? (3.4 - effectiveSolidWidth) * 7.5 : 0;
+    const lowHeightPenalty =
+      scoreX && silHeight < 14 ? (14 - silHeight) * 4.0 : 0;
+    const firstLetterTieBreaker = letterIndex === 0 ? 0.6 : 0;
+
+    const totalScore =
+      effectiveSolidWidth * 2.8 +
+      silHeight * 0.85 +
+      firstLetterTieBreaker -
+      thinStrokePenalty -
+      lowHeightPenalty;
+
+    if (!bestEval || totalScore > bestEval.score) {
+      bestEval = {
+        anchor: {
+          x: candidateX,
+          topY: localTopY,
+          solidWidth: effectiveSolidWidth,
+          minX,
+          maxX,
+          letterIndex,
+          recommendedTubeRadius,
+          recommendedMajorRadius,
+        },
+        score: totalScore,
+      };
+    }
   }
 
-  if (runs.length === 0) {
+  if (!bestEval) {
+    const fallbackWidth = glyphW * 0.42;
+    const midX = (minX + maxX) * 0.5;
+    const { recommendedTubeRadius, recommendedMajorRadius } =
+      computeRecommendedArchRadii(fallbackWidth);
+    const silScore = scoreX ? scoreX(midX) : 20;
     return {
-      x: (minX + maxX) * 0.5,
-      topY,
-      solidWidth: glyphW * 0.45,
-      minX,
-      maxX,
+      anchor: {
+        x: midX,
+        topY,
+        solidWidth: fallbackWidth,
+        minX,
+        maxX,
+        letterIndex,
+        recommendedTubeRadius,
+        recommendedMajorRadius,
+      },
+      score: fallbackWidth * 1.6 + silScore * 0.7,
     };
   }
 
-  // Pick the strongest run: combine solid width + optional silhouette height score
-  let best = runs[0];
-  let bestScore = -Infinity;
-  for (const r of runs) {
-    // If a run is wide (e.g. a full horizontal serif/top bar), pick the best x inside it
-    const candidateX = scoreX
-      ? r.width > 8
-        ? (() => {
-            // Sample along the wide run while keeping >= 2.8mm margin from run edges
-            const margin = Math.min(3.0, r.width * 0.35);
-            let bestX = r.midX;
-            let bestS = scoreX(r.midX);
-            for (let k = 0; k <= 8; k++) {
-              const cx = r.startX + margin + (k / 8) * Math.max(0.1, r.width - margin * 2);
-              const s = scoreX(cx);
-              if (s > bestS) {
-                bestS = s;
-                bestX = cx;
-              }
-            }
-            return bestX;
-          })()
-        : r.midX
-      : r.midX;
+  return bestEval;
+}
 
-    const silhouetteBonus = scoreX ? scoreX(candidateX) * 1.6 : 0;
-    const score = r.width * 1.4 + silhouetteBonus;
-    if (score > bestScore) {
-      bestScore = score;
-      best = { ...r, midX: candidateX };
-    }
+/**
+ * Finds the best solid anchor point right along the top edge of the 1st letter
+ * (or automatically chooses the 2nd letter when `secondLetterShapes` is provided and
+ * offers a stronger, wider, or better-positioned stroke on the piece).
+ */
+export function findFirstLetterTopAnchor(
+  firstLetterShapes: THREE.Shape[],
+  fallbackCapY: number,
+  scoreX?: (x: number) => number,
+  secondLetterShapes?: THREE.Shape[]
+): FirstLetterTopAnchor {
+  const firstCandidate = evaluateLetterTopCandidates(
+    firstLetterShapes,
+    fallbackCapY,
+    0,
+    scoreX
+  );
+  const secondCandidate =
+    secondLetterShapes && secondLetterShapes.length > 0
+      ? evaluateLetterTopCandidates(secondLetterShapes, fallbackCapY, 1, scoreX)
+      : null;
+
+  if (firstCandidate && secondCandidate) {
+    return secondCandidate.score > firstCandidate.score
+      ? secondCandidate.anchor
+      : firstCandidate.anchor;
   }
+  if (firstCandidate) return firstCandidate.anchor;
+  if (secondCandidate) return secondCandidate.anchor;
 
+  const { recommendedTubeRadius, recommendedMajorRadius } =
+    computeRecommendedArchRadii(6);
   return {
-    x: best.midX,
-    topY,
-    solidWidth: best.width,
-    minX,
-    maxX,
+    x: 0,
+    topY: fallbackCapY,
+    solidWidth: 6,
+    minX: -3,
+    maxX: 3,
+    letterIndex: 0,
+    recommendedTubeRadius,
+    recommendedMajorRadius,
   };
+}
+
+/**
+ * Convenience alias that evaluates both the 1st and 2nd letters of a word and returns
+ * the anchor with the safest wall clearance and silhouette height.
+ */
+export function findBestWordTopAnchor(
+  firstLetterShapes: THREE.Shape[],
+  secondLetterShapes: THREE.Shape[],
+  fallbackCapY: number,
+  scoreX?: (x: number) => number
+): FirstLetterTopAnchor {
+  return findFirstLetterTopAnchor(
+    firstLetterShapes,
+    fallbackCapY,
+    scoreX,
+    secondLetterShapes
+  );
 }
 
 /**

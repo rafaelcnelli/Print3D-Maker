@@ -5,9 +5,12 @@ import {
   type ApprovedVectorizeResult,
   type ImageVectorizeDraft,
 } from './components/ImageVectorizeModal';
+import { PreloadScreen } from './components/PreloadScreen';
+import { PWAInstallModal } from './components/PWAInstallModal';
 import { SelectionMeasureCard } from './components/SelectionMeasureCard';
 import { TopBar } from './components/TopBar';
 import { Viewport3D, type Viewport3DHandle } from './components/Viewport3D';
+import { useOnlineStatus, usePWAInstall } from './hooks/usePWAInstall';
 import {
   applyInfillToMetrics,
   clampInfillPercent,
@@ -156,6 +159,10 @@ export default function App() {
   const [pieceSelected, setPieceSelected] = useState(false);
   const [lockProportions, setLockProportions] = useState(true);
   const [vectorizeDraft, setVectorizeDraft] = useState<ImageVectorizeDraft | null>(null);
+  const [showPreload, setShowPreload] = useState(true);
+  const [showPWAInstallModal, setShowPWAInstallModal] = useState(false);
+  const { isInstallable, isInstalled, isIOS, triggerNativeInstall } = usePWAInstall();
+  const isOnline = useOnlineStatus();
   const [costSettings, setCostSettings] = useState<CostCalculatorSettings>(
     loadInitialCostSettings
   );
@@ -254,6 +261,20 @@ export default function App() {
   const handleToggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
+
+  const handleOpenPWAInstall = useCallback(async () => {
+    if (isInstallable) {
+      const outcome = await triggerNativeInstall();
+      if (outcome === 'accepted') {
+        setExportNotice('Aplicativo Print3D Maker instalado com sucesso!');
+        return;
+      }
+      if (outcome === 'dismissed') {
+        return;
+      }
+    }
+    setShowPWAInstallModal(true);
+  }, [isInstallable, triggerNativeInstall]);
 
   // Auto-dismiss status/export confirmation banner cleanly
   useEffect(() => {
@@ -506,10 +527,13 @@ export default function App() {
         metrics={effectiveMetrics}
         finish={config.finish}
         costSettings={costSettings}
+        isPWAInstalled={isInstalled}
         onSelectTemplate={handleSelectTemplate}
         onChangeBuildPlate={handleChangeBuildPlate}
         onChangeCostSettings={setCostSettings}
         onToggleTheme={handleToggleTheme}
+        onOpenPWAInstall={handleOpenPWAInstall}
+        onOpenPreload={() => setShowPreload(true)}
         onDownloadSTL={handleDownloadSTL}
         canExport={isModelValid}
       />
@@ -600,6 +624,36 @@ export default function App() {
           onCancel={() => setVectorizeDraft(null)}
           onApprove={handleApproveVectorize}
         />
+      )}
+
+      {/* Pre-load Splash Screen with Logo & PWA Install CTA */}
+      <PreloadScreen
+        visible={showPreload}
+        isInstallable={isInstallable}
+        isInstalled={isInstalled}
+        onInstallClick={handleOpenPWAInstall}
+        onEnterStudio={() => setShowPreload(false)}
+      />
+
+      {/* PWA Installation Guide / Native Trigger Modal */}
+      <PWAInstallModal
+        open={showPWAInstallModal}
+        isInstallable={isInstallable}
+        isInstalled={isInstalled}
+        isIOS={isIOS}
+        onTriggerNativeInstall={triggerNativeInstall}
+        onClose={() => setShowPWAInstallModal(false)}
+      />
+
+      {/* Non-intrusive offline PWA connectivity indicator */}
+      {!isOnline && (
+        <div
+          role="status"
+          data-testid="offline-indicator"
+          className="fixed bottom-4 left-4 z-50 rounded-lg border border-[#F59E0B]/40 bg-[#1C1917] px-3 py-1.5 text-xs font-medium text-[#FDE68A] shadow-lg"
+        >
+          Modo offline — Usando estúdio 3D em cache local
+        </div>
       )}
     </div>
   );

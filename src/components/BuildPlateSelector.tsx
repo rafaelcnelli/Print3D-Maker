@@ -106,7 +106,7 @@ export function BuildPlateSelector({
           role="dialog"
           aria-label="Configurar tamanho da bandeja 3D"
           data-testid="bed-size-popover"
-          className="absolute right-0 mt-2 w-72 sm:w-80 rounded-xl border border-[#D5DCE6] dark:border-[#2B3548] bg-white dark:bg-[#161B26] shadow-[0_18px_44px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.65)] p-3.5 z-40"
+          className="fixed inset-x-3 top-16 sm:inset-x-auto sm:top-auto sm:absolute sm:right-0 sm:mt-2 sm:w-80 rounded-xl border border-[#D5DCE6] dark:border-[#2B3548] bg-white dark:bg-[#161B26] shadow-[0_18px_44px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.65)] p-3.5 z-40"
         >
           <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[#E5E9F0] dark:border-[#262E3E]">
             <div>
