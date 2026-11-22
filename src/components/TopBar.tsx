@@ -1,14 +1,26 @@
 import { Download, Moon, Sun } from 'lucide-react';
 import { TEMPLATE_ORDER, TEMPLATES } from '../core/projectDefaults';
-import type { BuildPlateSize, TemplateId, ThemeMode } from '../types/project';
+import type {
+  BuildPlateSize,
+  CostCalculatorSettings,
+  FilamentFinishId,
+  PrintMetrics,
+  TemplateId,
+  ThemeMode,
+} from '../types/project';
 import { BuildPlateSelector } from './BuildPlateSelector';
+import { CostCalculator } from './CostCalculator';
 
 interface TopBarProps {
   activeTemplate: TemplateId;
   theme: ThemeMode;
   buildPlate: BuildPlateSize;
+  metrics: PrintMetrics;
+  finish: FilamentFinishId;
+  costSettings: CostCalculatorSettings;
   onSelectTemplate: (template: TemplateId) => void;
   onChangeBuildPlate: (next: BuildPlateSize) => void;
+  onChangeCostSettings: (next: CostCalculatorSettings) => void;
   onToggleTheme: () => void;
   onDownloadSTL: () => void;
   canExport: boolean;
@@ -18,8 +30,12 @@ export function TopBar({
   activeTemplate,
   theme,
   buildPlate,
+  metrics,
+  finish,
+  costSettings,
   onSelectTemplate,
   onChangeBuildPlate,
+  onChangeCostSettings,
   onToggleTheme,
   onDownloadSTL,
   canExport,
@@ -27,7 +43,7 @@ export function TopBar({
   const isDark = theme === 'dark';
 
   return (
-    <header className="fixed top-0 inset-x-0 z-20 h-14 bg-[#FFFFFF]/95 dark:bg-[#131720]/96 border-b border-[#DCE1EA] dark:border-[#262E3E] px-4 sm:px-6 flex items-center justify-between gap-3 sm:gap-6 transition-colors">
+    <header className="fixed top-0 inset-x-0 z-20 h-14 bg-[#FFFFFF]/95 dark:bg-[#131720]/96 border-b border-[#DCE1EA] dark:border-[#262E3E] px-4 sm:px-6 flex items-center justify-between gap-3 sm:gap-5 transition-colors">
       {/* Zone 1: Single-element display brand wordmark */}
       <span className="font-display text-lg sm:text-xl font-bold tracking-tight text-[#171A21] dark:text-[#F1F5F9] whitespace-nowrap shrink-0">
         Molde3D
@@ -65,8 +81,15 @@ export function TopBar({
         })}
       </nav>
 
-      {/* Zone 3: Build plate selector + Theme selector + Primary action CTA */}
+      {/* Zone 3: Cost calculator + Build plate selector + Theme selector + Primary action CTA */}
       <div className="flex items-center gap-2 shrink-0">
+        <CostCalculator
+          metrics={metrics}
+          finish={finish}
+          settings={costSettings}
+          onChangeSettings={onChangeCostSettings}
+        />
+
         <BuildPlateSelector
           buildPlate={buildPlate}
           onChangeBuildPlate={onChangeBuildPlate}

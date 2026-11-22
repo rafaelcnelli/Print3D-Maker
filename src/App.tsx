@@ -9,6 +9,12 @@ import { SelectionMeasureCard } from './components/SelectionMeasureCard';
 import { TopBar } from './components/TopBar';
 import { Viewport3D, type Viewport3DHandle } from './components/Viewport3D';
 import {
+  applyInfillToMetrics,
+  clampInfillPercent,
+  clampNonNegativePrice,
+  DEFAULT_COST_SETTINGS,
+} from './core/costCalculator';
+import {
   clampDimensionsToBounds,
   extractDimensions,
   getTemplateDimensionBounds,
@@ -26,6 +32,7 @@ import { buildExportFilename } from './core/stlExporter';
 import type {
   BuildPlateSize,
   CameraPresetId,
+  CostCalculatorSettings,
   PrintMetrics,
   ProjectConfig,
   TemplateId,
@@ -34,6 +41,30 @@ import type {
 
 const THEME_STORAGE_KEY = 'molde3d-theme';
 const BED_STORAGE_KEY = 'molde3d-bed-size';
+const COST_STORAGE_KEY = 'molde3d-cost-settings';
+
+function loadInitialCostSettings(): CostCalculatorSettings {
+  try {
+    const raw = window.localStorage.getItem(COST_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<CostCalculatorSettings>;
+      return {
+        filamentPricePerKg: clampNonNegativePrice(
+          Number(parsed.filamentPricePerKg),
+          DEFAULT_COST_SETTINGS.filamentPricePerKg
+        ),
+        hourlyPrintCost: clampNonNegativePrice(
+          Number(parsed.hourlyPrintCost),
+          DEFAULT_COST_SETTINGS.hourlyPrintCost
+        ),
+        infillPercent: clampInfillPercent(Number(parsed.infillPercent)),
+      };
+    }
+  } catch {
+    // Ignore storage access errors in restricted iframes
+  }
+  return DEFAULT_COST_SETTINGS;
+}
 
 function loadInitialTheme(): ThemeMode {
   try {
@@ -125,6 +156,9 @@ export default function App() {
   const [pieceSelected, setPieceSelected] = useState(false);
   const [lockProportions, setLockProportions] = useState(true);
   const [vectorizeDraft, setVectorizeDraft] = useState<ImageVectorizeDraft | null>(null);
+  const [costSettings, setCostSettings] = useState<CostCalculatorSettings>(
+    loadInitialCostSettings
+  );
   const [metrics, setMetrics] = useState<PrintMetrics>({
     widthMm: 65,
     heightMm: 55,
@@ -135,6 +169,12 @@ export default function App() {
     estimatedMinutes: 39,
   });
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+
+  const effectiveMetrics = useMemo(
+    () =>
+      applyInfillToMetrics(metrics, costSettings.infillPercent, config.finish),
+    [metrics, costSettings.infillPercent, config.finish]
+  );
 
   const textValidation = useMemo(
     () => validateProjectText(config.text, 14),
@@ -164,6 +204,15 @@ export default function App() {
       // Ignore storage access errors in restricted iframes
     }
   }, [buildPlate]);
+
+  // Persist cost calculator settings to localStorage
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COST_STORAGE_KEY, JSON.stringify(costSettings));
+    } catch {
+      // Ignore storage access errors in restricted iframes
+    }
+  }, [costSettings]);
 
   // Keyboard shortcuts: "H" toggles Cinema/Zen Mode, "Escape" deselects piece
   useEffect(() => {
@@ -454,8 +503,12 @@ export default function App() {
         activeTemplate={config.template}
         theme={theme}
         buildPlate={buildPlate}
+        metrics={effectiveMetrics}
+        finish={config.finish}
+        costSettings={costSettings}
         onSelectTemplate={handleSelectTemplate}
         onChangeBuildPlate={handleChangeBuildPlate}
+        onChangeCostSettings={setCostSettings}
         onToggleTheme={handleToggleTheme}
         onDownloadSTL={handleDownloadSTL}
         canExport={isModelValid}
@@ -491,7 +544,7 @@ export default function App() {
         {pieceSelected && (
           <SelectionMeasureCard
             config={config}
-            metrics={metrics}
+            metrics={effectiveMetrics}
             bounds={dimensionBounds}
             lockProportions={lockProportions}
             onToggleLock={handleToggleLockProportions}
@@ -521,7 +574,7 @@ export default function App() {
         buildPlate={buildPlate}
         textError={displayedTextError}
         cameraPreset={cameraPreset}
-        metrics={metrics}
+        metrics={effectiveMetrics}
         collapsed={dockCollapsed}
         lockProportions={lockProportions}
         onToggleCollapse={() => setDockCollapsed((c) => !c)}

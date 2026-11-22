@@ -121,6 +121,15 @@ export interface PrintMetrics {
   estimatedMinutes: number;
 }
 
+export interface CostCalculatorSettings {
+  /** Filament spool price in BRL per kilogram (R$/kg) */
+  filamentPricePerKg: number;
+  /** Machine + energy cost in BRL per printing hour (R$/h) */
+  hourlyPrintCost: number;
+  /** Part infill percentage (0 - 100%) */
+  infillPercent: number;
+}
+
 export interface TemplateMeta {
   id: TemplateId;
   shortLabel: string;
