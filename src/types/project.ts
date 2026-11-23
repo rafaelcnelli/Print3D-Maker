@@ -29,6 +29,16 @@ export type SvgPresetId = 'paw' | 'crown' | 'star' | 'bolt';
 
 export type SvgAttachMode = 'arch' | 'hole' | 'loop';
 
+export type KeyringDirection =
+  | 'top-left'
+  | 'top'
+  | 'top-right'
+  | 'left'
+  | 'right'
+  | 'bottom-left'
+  | 'bottom'
+  | 'bottom-right';
+
 export type ImageTraceMode = 'auto' | 'luminance' | 'alpha';
 
 export type BuildPlatePresetId =
@@ -77,6 +87,8 @@ export interface ProjectConfig {
   finish: FilamentFinishId;
   /** Negative curved arch tunnel carved at the top of the first letter for a keyring */
   keyringArch: boolean;
+  /** 8-way cardinal/intercardinal position for the keyring attachment */
+  keyringDirection: KeyringDirection;
   // Heart-Name specific
   heartMode: HeartStructureMode;
   heartKeyring: boolean;

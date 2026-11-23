@@ -590,13 +590,12 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
           renderer.render(scene, camera);
           updateProjectedDimensionBadges();
 
-          const seqTarget = container?.parentElement ?? container;
-          if (seqTarget) {
-            const prevSeq = Number(seqTarget.getAttribute('data-render-seq') ?? '0');
-            seqTarget.setAttribute('data-render-seq', String(prevSeq + 1));
-          }
-
           const done = () => {
+            const seqTarget = container?.parentElement ?? container;
+            if (seqTarget) {
+              const prevSeq = Number(seqTarget.getAttribute('data-render-seq') ?? '0');
+              seqTarget.setAttribute('data-render-seq', String(prevSeq + 1));
+            }
             renderBusy = false;
             if (!disposed && (renderDirty || needsContinue)) {
               requestRender();

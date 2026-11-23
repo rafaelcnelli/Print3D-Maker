@@ -7,8 +7,10 @@ import {
   ImageUp,
   Lock,
   LockOpen,
+  Redo2,
   RotateCcw,
   SlidersHorizontal,
+  Undo2,
 } from 'lucide-react';
 import {
   computeAutoThreshold,
@@ -19,6 +21,7 @@ import {
   FILAMENT_COLORS,
   FILAMENT_FINISHES,
   FONT_STYLES,
+  KEYRING_DIRECTIONS,
   TEMPLATES,
 } from '../core/projectDefaults';
 import { formatPrintDuration } from '../core/stlExporter';
@@ -27,8 +30,8 @@ import type {
   BuildPlateSize,
   CameraPresetId,
   HeartStructureMode,
-  KeychainRingPosition,
   KeychainShape,
+  KeyringDirection,
   PrintMetrics,
   ProjectConfig,
   SignBaseStyle,
@@ -37,6 +40,117 @@ import type {
 import type { ImageVectorizeDraft } from './ImageVectorizeModal';
 
 type DockTab = 'shape' | 'dimensions' | 'filament';
+
+const CARDINAL_GRID_CELLS: (KeyringDirection | null)[] = [
+  'top-left',
+  'top',
+  'top-right',
+  'left',
+  null,
+  'right',
+  'bottom-left',
+  'bottom',
+  'bottom-right',
+];
+
+function KeyringAttachmentAndCardinalControl({
+  attachMode,
+  direction,
+  onSelectMode,
+  onSelectDirection,
+}: {
+  attachMode: SvgAttachMode;
+  direction: KeyringDirection;
+  onSelectMode: (mode: SvgAttachMode) => void;
+  onSelectDirection: (dir: KeyringDirection) => void;
+}) {
+  const activeDirMeta =
+    KEYRING_DIRECTIONS.find((d) => d.id === direction) ?? KEYRING_DIRECTIONS[1];
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="flex flex-col gap-1 flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-1 text-[11px]">
+          <span className="font-medium text-[#5A6375] dark:text-[#94A3B8]">
+            Encaixe da argola
+          </span>
+          <span
+            data-testid="active-keyring-direction-label"
+            className="font-semibold text-[#D93848] dark:text-[#F46472] truncate"
+          >
+            {activeDirMeta.label}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+          {(
+            [
+              { id: 'arch', label: 'Arco neg.' },
+              { id: 'hole', label: 'Furo red.' },
+              { id: 'loop', label: 'Argola' },
+            ] as { id: SvgAttachMode; label: string }[]
+          ).map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              data-testid={`svg-attach-${mode.id}`}
+              onClick={() => onSelectMode(mode.id)}
+              aria-pressed={attachMode === mode.id}
+              className={`flex-1 h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                attachMode === mode.id
+                  ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                  : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+              }`}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 3x3 Square with the 8 Cardinal Directions */}
+      <div
+        data-testid="keyring-cardinal-pad"
+        role="group"
+        aria-label="Escolher direção do encaixe da argola (8 cardeais)"
+        className="grid grid-cols-3 gap-0.5 p-1 rounded-xl bg-[#EFF2F7] dark:bg-[#0E121A] border border-[#D1D8E3]/80 dark:border-[#252F42] shrink-0"
+      >
+        {CARDINAL_GRID_CELLS.map((cellDir, idx) => {
+          if (!cellDir) {
+            return (
+              <div
+                key={`center-${idx}`}
+                className="w-5 h-5 flex items-center justify-center"
+                aria-hidden="true"
+              >
+                <span className="w-2 h-2 rounded-full bg-[#8A94A6]/60 dark:bg-[#64748B]/70 ring-2 ring-[#D93848]/25" />
+              </div>
+            );
+          }
+          const meta = KEYRING_DIRECTIONS.find((d) => d.id === cellDir)!;
+          const active = direction === cellDir;
+          return (
+            <button
+              key={cellDir}
+              type="button"
+              data-testid={`keyring-dir-${cellDir}`}
+              title={`Posição: ${meta.label}`}
+              aria-label={`Posição ${meta.label}`}
+              aria-pressed={active}
+              onClick={() => onSelectDirection(cellDir)}
+              className={`w-5 h-5 rounded-md flex items-center justify-center text-[11px] font-bold leading-none transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                active
+                  ? 'bg-[#D93848] text-white shadow-xs scale-105'
+                  : 'bg-white/80 dark:bg-[#192130] text-[#4E5869] dark:text-[#94A3B8] hover:bg-white dark:hover:bg-[#253046] hover:text-[#171A21] dark:hover:text-[#F8FAFC]'
+              }`}
+            >
+              {meta.shortLabel}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 interface ControlDockProps {
   config: ProjectConfig;
@@ -47,6 +161,10 @@ interface ControlDockProps {
   metrics: PrintMetrics;
   collapsed: boolean;
   lockProportions: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onToggleCollapse: () => void;
   onToggleLockProportions: () => void;
   onUpdateConfig: (patch: Partial<ProjectConfig>) => void;
@@ -69,6 +187,10 @@ export function ControlDock({
   metrics,
   collapsed,
   lockProportions,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onToggleCollapse,
   onToggleLockProportions,
   onUpdateConfig,
@@ -187,26 +309,52 @@ export function ControlDock({
       aria-label="Controles de personalização do projeto 3D"
       className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 w-[min(960px,95vw)] pointer-events-none flex flex-col items-center"
     >
-      {/* Attached Collapse / Expand Toggle Handle */}
-      <button
-        type="button"
-        onClick={onToggleCollapse}
-        aria-expanded={!collapsed}
-        aria-controls="studio-dock-panel"
-        className="pointer-events-auto inline-flex items-center gap-1.5 h-8 px-3.5 rounded-t-lg border border-b-0 border-[#D5DCE6] dark:border-[#273043] bg-[#FFFFFF]/96 dark:bg-[#161B26]/96 text-xs font-medium text-[#374151] dark:text-[#CBD5E1] hover:text-[#171A21] dark:hover:text-[#F8FAFC] shadow-[0_-4px_14px_rgba(15,23,42,0.05)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
-      >
-        {collapsed ? (
-          <>
-            <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Personalizar projeto</span>
-          </>
-        ) : (
-          <>
-            <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Ocultar controles</span>
-          </>
-        )}
-      </button>
+      {/* Attached Undo / Collapse / Redo Handle Bar */}
+      <div className="pointer-events-auto inline-flex items-stretch rounded-t-lg border border-b-0 border-[#D5DCE6] dark:border-[#273043] bg-[#FFFFFF]/96 dark:bg-[#161B26]/96 shadow-[0_-4px_14px_rgba(15,23,42,0.05)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] overflow-hidden transition-colors">
+        <button
+          type="button"
+          data-testid="undo-btn"
+          onClick={onUndo}
+          disabled={!canUndo}
+          aria-label="Desfazer última ação (Ctrl+Z)"
+          title="Desfazer (Ctrl+Z)"
+          className="inline-flex items-center justify-center w-8 h-8 border-r border-[#E2E8F0] dark:border-[#273043] text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
+        >
+          <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          aria-controls="studio-dock-panel"
+          className="inline-flex items-center gap-1.5 h-8 px-3.5 text-xs font-medium text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
+        >
+          {collapsed ? (
+            <>
+              <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Personalizar projeto</span>
+            </>
+          ) : (
+            <>
+              <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Ocultar controles</span>
+            </>
+          )}
+        </button>
+
+        <button
+          type="button"
+          data-testid="redo-btn"
+          onClick={onRedo}
+          disabled={!canRedo}
+          aria-label="Refazer ação (Ctrl+Y)"
+          title="Refazer (Ctrl+Y)"
+          className="inline-flex items-center justify-center w-8 h-8 border-l border-[#E2E8F0] dark:border-[#273043] text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
+        >
+          <Redo2 className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+      </div>
 
       {/* Main Dock Panel (solid rgba surface, NO backdrop-filter over WebGL) */}
       {!collapsed && (
@@ -576,35 +724,19 @@ export function ControlDock({
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">
-                        Encaixe para argola
-                      </span>
-                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
-                        {(
-                          [
-                            { id: 'arch', label: 'Arco negativo' },
-                            { id: 'hole', label: 'Furo redondo' },
-                            { id: 'loop', label: 'Argola (arco)' },
-                          ] as { id: SvgAttachMode; label: string }[]
-                        ).map((mode) => (
-                          <button
-                            key={mode.id}
-                            type="button"
-                            data-testid={`svg-attach-${mode.id}`}
-                            onClick={() => onUpdateConfig({ svgAttachMode: mode.id })}
-                            aria-pressed={config.svgAttachMode === mode.id}
-                            className={`flex-1 h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                              config.svgAttachMode === mode.id
-                                ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
-                                : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
-                            }`}
-                          >
-                            {mode.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    <KeyringAttachmentAndCardinalControl
+                      attachMode={config.svgAttachMode}
+                      direction={config.keyringDirection ?? 'top'}
+                      onSelectMode={(mode) =>
+                        onUpdateConfig({
+                          svgAttachMode: mode,
+                          keyringArch: mode === 'arch',
+                        })
+                      }
+                      onSelectDirection={(dir) =>
+                        onUpdateConfig({ keyringDirection: dir })
+                      }
+                    />
 
                     <div className="flex items-center gap-3">
                       <div className="flex flex-col gap-1.5 flex-1 min-w-0">
@@ -784,73 +916,35 @@ export function ControlDock({
 
                 {config.template === 'keychain' && (
                   <>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">Formato da base</span>
-                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
-                        {(
-                          [
-                            { id: 'capsule', label: 'Cápsula' },
-                            { id: 'heart', label: 'Coração' },
-                            { id: 'rectangle', label: 'Retângulo' },
-                          ] as { id: KeychainShape; label: string }[]
-                        ).map((sh) => (
-                          <button
-                            key={sh.id}
-                            type="button"
-                            onClick={() => onUpdateConfig({ keychainShape: sh.id })}
-                            aria-pressed={config.keychainShape === sh.id}
-                            className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                              config.keychainShape === sh.id
-                                ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
-                                : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
-                            }`}
-                          >
-                            {sh.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-3 sm:pt-4">
-                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          data-testid="toggle-keyring-arch"
-                          checked={config.keyringArch}
-                          onChange={(e) =>
-                            onUpdateConfig({ keyringArch: e.target.checked })
-                          }
-                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
-                        />
-                        <span>Arco negativo (1ª/2ª letra)</span>
-                      </label>
-
-                      {!config.keyringArch && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-1 flex-1 min-w-0">
+                        <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">Formato da base</span>
                         <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
                           {(
                             [
-                              { id: 'left', label: 'Lateral' },
-                              { id: 'top', label: 'Topo' },
-                            ] as { id: KeychainRingPosition; label: string }[]
-                          ).map((pos) => (
+                              { id: 'capsule', label: 'Cápsula' },
+                              { id: 'heart', label: 'Coração' },
+                              { id: 'rectangle', label: 'Retângulo' },
+                            ] as { id: KeychainShape; label: string }[]
+                          ).map((sh) => (
                             <button
-                              key={pos.id}
+                              key={sh.id}
                               type="button"
-                              onClick={() => onUpdateConfig({ keychainRingPos: pos.id })}
-                              aria-pressed={config.keychainRingPos === pos.id}
-                              className={`h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                                config.keychainRingPos === pos.id
+                              onClick={() => onUpdateConfig({ keychainShape: sh.id })}
+                              aria-pressed={config.keychainShape === sh.id}
+                              className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                                config.keychainShape === sh.id
                                   ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                                   : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
                               }`}
                             >
-                              {pos.label}
+                              {sh.label}
                             </button>
                           ))}
                         </div>
-                      )}
+                      </div>
 
-                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer whitespace-nowrap pt-4 shrink-0">
                         <input
                           type="checkbox"
                           checked={config.keychainRaisedBorder}
@@ -862,6 +956,24 @@ export function ControlDock({
                         <span>Borda</span>
                       </label>
                     </div>
+
+                    <KeyringAttachmentAndCardinalControl
+                      attachMode={
+                        !config.keyringArch && config.svgAttachMode === 'arch'
+                          ? 'hole'
+                          : config.svgAttachMode
+                      }
+                      direction={config.keyringDirection ?? 'top'}
+                      onSelectMode={(mode) =>
+                        onUpdateConfig({
+                          svgAttachMode: mode,
+                          keyringArch: mode === 'arch',
+                        })
+                      }
+                      onSelectDirection={(dir) =>
+                        onUpdateConfig({ keyringDirection: dir })
+                      }
+                    />
                   </>
                 )}
 

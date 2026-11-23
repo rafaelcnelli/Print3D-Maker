@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import {
   Check,
   Download,
+  FolderOpen,
   Menu,
   MonitorSmartphone,
   Moon,
+  Save,
   Sparkles,
   Sun,
   X,
@@ -30,12 +32,15 @@ interface TopBarProps {
   finish: FilamentFinishId;
   costSettings: CostCalculatorSettings;
   isPWAInstalled: boolean;
+  savedProjectsCount: number;
   onSelectTemplate: (template: TemplateId) => void;
   onChangeBuildPlate: (next: BuildPlateSize) => void;
   onChangeCostSettings: (next: CostCalculatorSettings) => void;
   onToggleTheme: () => void;
   onOpenPWAInstall: () => void;
   onOpenPreload: () => void;
+  onOpenSaveModal: () => void;
+  onOpenSavedProjects: () => void;
   onDownloadSTL: () => void;
   canExport: boolean;
 }
@@ -48,12 +53,15 @@ export function TopBar({
   finish,
   costSettings,
   isPWAInstalled,
+  savedProjectsCount,
   onSelectTemplate,
   onChangeBuildPlate,
   onChangeCostSettings,
   onToggleTheme,
   onOpenPWAInstall,
   onOpenPreload,
+  onOpenSaveModal,
+  onOpenSavedProjects,
   onDownloadSTL,
   canExport,
 }: TopBarProps) {
@@ -83,9 +91,9 @@ export function TopBar({
 
   return (
     <>
-      <header className="fixed top-0 inset-x-0 z-20 h-14 bg-[#FFFFFF]/95 dark:bg-[#131720]/96 border-b border-[#DCE1EA] dark:border-[#262E3E] px-3 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 transition-colors">
+      <header className="fixed top-0 inset-x-0 z-20 h-14 bg-[#FFFFFF]/95 dark:bg-[#131720]/96 border-b border-[#DCE1EA] dark:border-[#262E3E] px-2.5 sm:px-5 flex items-center justify-between gap-1.5 sm:gap-3 transition-colors">
         {/* Zone 1: Mobile Hamburger Button (< lg) + Brand logo + display wordmark */}
-        <div className="flex items-center gap-2 shrink-0 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
           <button
             type="button"
             data-testid="mobile-menu-toggle"
@@ -96,7 +104,7 @@ export function TopBar({
               mobileMenuOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'
             }
             title="Menu de projetos e ferramentas"
-            className="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+            className="lg:hidden inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
           >
             {mobileMenuOpen ? (
               <X className="w-4 h-4 text-[#D93848]" aria-hidden="true" />
@@ -110,10 +118,10 @@ export function TopBar({
             data-testid="brand-preload-btn"
             onClick={onOpenPreload}
             title="Ver tela inicial do Print3D Maker"
-            className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] rounded-lg"
+            className="inline-flex items-center gap-1.5 sm:gap-2 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] rounded-lg"
           >
-            <BrandLogo size={30} className="shrink-0 rounded-lg" />
-            <span className="font-display text-sm sm:text-lg font-bold tracking-tight text-[#171A21] dark:text-[#F1F5F9]">
+            <BrandLogo size={28} className="shrink-0 rounded-lg" />
+            <span className="hidden min-[460px]:inline font-display text-sm sm:text-base xl:text-lg font-bold tracking-tight text-[#171A21] dark:text-[#F1F5F9]">
               Print3D Maker
             </span>
           </button>
@@ -122,7 +130,7 @@ export function TopBar({
         {/* Zone 2: Desktop single-line project template links (lg+) */}
         <nav
           aria-label="Projetos prontos"
-          className="hidden lg:flex items-center gap-1 sm:gap-2 xl:gap-2.5 overflow-x-auto no-scrollbar min-w-0"
+          className="hidden lg:flex items-center gap-1 xl:gap-2 overflow-x-auto no-scrollbar min-w-0"
         >
           {TEMPLATE_ORDER.map((id) => {
             const meta = TEMPLATES[id];
@@ -133,7 +141,7 @@ export function TopBar({
                 type="button"
                 onClick={() => onSelectTemplate(id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`relative h-14 px-2 sm:px-1 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] focus-visible:ring-inset ${
+                className={`relative h-14 px-1.5 xl:px-1 text-xs xl:text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] focus-visible:ring-inset ${
                   isActive
                     ? 'text-[#171A21] dark:text-[#F8FAFC]'
                     : 'text-[#5A6375] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -143,7 +151,7 @@ export function TopBar({
                 {isActive && (
                   <span
                     aria-hidden="true"
-                    className="absolute bottom-0 inset-x-1 sm:inset-x-0 h-[2px] bg-[#D93848] dark:bg-[#E84C5C]"
+                    className="absolute bottom-0 inset-x-1 xl:inset-x-0 h-[2px] bg-[#D93848] dark:bg-[#E84C5C]"
                   />
                 )}
               </button>
@@ -151,8 +159,8 @@ export function TopBar({
           })}
         </nav>
 
-        {/* Zone 3: Cost calculator + Build plate selector + PWA Install + Theme selector + Primary action CTA */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* Zone 3: Cost calculator + Build plate selector + Save / Saved Projects + PWA Install + Theme selector + Primary action CTA */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <CostCalculator
             metrics={metrics}
             finish={finish}
@@ -166,6 +174,37 @@ export function TopBar({
               onChangeBuildPlate={onChangeBuildPlate}
             />
           </div>
+
+          <button
+            type="button"
+            data-testid="save-project-btn"
+            onClick={onOpenSaveModal}
+            aria-label="Salvar projeto"
+            title="Salvar projeto"
+            className="inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+          >
+            <Save className="w-4 h-4 text-[#D93848] dark:text-[#E84C5C]" aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
+            data-testid="saved-projects-btn"
+            onClick={onOpenSavedProjects}
+            aria-label={`Projetos salvos (${savedProjectsCount})`}
+            title="Projetos salvos"
+            className="relative inline-flex items-center gap-1.5 h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+          >
+            <FolderOpen className="w-4 h-4 text-[#D93848] dark:text-[#E84C5C] shrink-0" aria-hidden="true" />
+            <span className="hidden 2xl:inline">Projetos salvos</span>
+            {savedProjectsCount > 0 && (
+              <span
+                data-testid="saved-projects-count"
+                className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-md bg-[#D93848] text-white font-mono text-[10px] font-bold leading-none"
+              >
+                {savedProjectsCount}
+              </span>
+            )}
+          </button>
 
           {!isPWAInstalled && (
             <button
@@ -206,9 +245,9 @@ export function TopBar({
             type="button"
             onClick={onDownloadSTL}
             disabled={!canExport}
-            className="inline-flex items-center gap-1.5 sm:gap-2 h-9 px-2.5 sm:px-4 rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] active:bg-[#A62331] disabled:bg-[#CBD2DC] dark:disabled:bg-[#2A3344] disabled:text-[#667085] dark:disabled:text-[#64748B] disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#D93848]"
+            className="inline-flex items-center gap-1 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3.5 rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] active:bg-[#A62331] disabled:bg-[#CBD2DC] dark:disabled:bg-[#2A3344] disabled:text-[#667085] dark:disabled:text-[#64748B] disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#D93848]"
           >
-            <Download className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" aria-hidden="true" />
             <span className="sm:hidden">STL</span>
             <span className="hidden sm:inline">Baixar STL</span>
           </button>
@@ -310,7 +349,35 @@ export function TopBar({
             {/* Bottom Tools & Preferences inside Mobile Sidebar */}
             <div className="p-3.5 border-t border-[#E5E9F0] dark:border-[#262E3E] bg-[#F8FAFC] dark:bg-[#0F131C] space-y-2.5">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] px-1">
-                Configurações e App
+                Projetos e Configurações
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  data-testid="mobile-save-project-btn"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenSaveModal();
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl border border-[#D93848]/35 bg-[#FDF2F3] dark:bg-[#2B171D] text-[#D93848] dark:text-[#F87171] text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span>Salvar</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="mobile-saved-projects-btn"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenSavedProjects();
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26] text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-[#D93848] shrink-0" aria-hidden="true" />
+                  <span>Salvos ({savedProjectsCount})</span>
+                </button>
               </div>
 
               {/* Build Plate Size Selector row for mobile */}

@@ -60,8 +60,12 @@ export function getTemplateDimensionBounds(
     template === 'svg-keychain' ||
     isSeparatedBox;
 
+  const hasProtrudingTab =
+    (template === 'svg-keychain' || template === 'keychain') &&
+    (options?.svgAttachMode === 'hole' || options?.svgAttachMode === 'loop');
+
   // Allow width to expand up to the build plate (and strictly never exceed usableX)
-  const maxWidthMm = usableX;
+  const maxWidthMm = hasProtrudingTab ? Math.max(24, usableX - 12) : usableX;
   const minWidthMm = Math.min(m.minWidthMm, Math.max(20, maxWidthMm - 10));
 
   let maxHeightMm: number;
@@ -72,11 +76,8 @@ export function getTemplateDimensionBounds(
     if (isSeparatedBox) {
       // Separated Box Letters lay out TWO rows (shell + front lid + 14mm gap + borders)
       maxHeightMm = Math.max(24, Math.floor((usableY - 24) / 2));
-    } else if (
-      template === 'svg-keychain' &&
-      (options?.svgAttachMode === 'hole' || options?.svgAttachMode === 'loop')
-    ) {
-      // Reserve 12mm for the protruding top keyring ear/loop
+    } else if (hasProtrudingTab) {
+      // Reserve 12mm for the protruding keyring ear/loop
       maxHeightMm = Math.max(24, usableY - 12);
     } else {
       maxHeightMm = usableY;

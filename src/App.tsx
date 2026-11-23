@@ -7,6 +7,8 @@ import {
 } from './components/ImageVectorizeModal';
 import { PreloadScreen } from './components/PreloadScreen';
 import { PWAInstallModal } from './components/PWAInstallModal';
+import { SavedProjectsModal } from './components/SavedProjectsModal';
+import { SaveProjectModal } from './components/SaveProjectModal';
 import { SelectionMeasureCard } from './components/SelectionMeasureCard';
 import { TopBar } from './components/TopBar';
 import { Viewport3D, type Viewport3DHandle } from './components/Viewport3D';
@@ -26,11 +28,28 @@ import {
   type Dimensions3D,
 } from './core/dimensionMath';
 import {
+  commitHistory,
+  createHistoryState,
+  inferConfigMergeKey,
+  redoHistory,
+  undoHistory,
+  type HistoryState,
+  type StudioSnapshot,
+} from './core/historyManager';
+import {
   createDefaultConfig,
   DEFAULT_BUILD_PLATE,
   TEMPLATES,
   validateProjectText,
 } from './core/projectDefaults';
+import {
+  cloneProjectConfig,
+  loadAllSavedProjects,
+  persistSavedProject,
+  removeSavedProject,
+  upsertSavedProjectInList,
+  type SavedProject,
+} from './core/savedProjectsStore';
 import { buildExportFilename } from './core/stlExporter';
 import type {
   BuildPlateSize,
@@ -144,14 +163,23 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 
 export default function App() {
   const viewportRef = useRef<Viewport3DHandle | null>(null);
-  const [buildPlate, setBuildPlate] = useState<BuildPlateSize>(loadInitialBuildPlate);
-  const [config, setConfig] = useState<ProjectConfig>(() => {
+  const [history, setHistory] = useState<HistoryState>(() => {
     const initialBed = loadInitialBuildPlate();
     const initial = createDefaultConfig('heart-name');
     const bounds = getTemplateDimensionBounds(initial.template, initialBed);
     const clamped = clampDimensionsToBounds(extractDimensions(initial), bounds, true);
-    return { ...initial, ...clamped };
+    return createHistoryState({
+      config: { ...initial, ...clamped },
+      buildPlate: initialBed,
+    });
   });
+  const historyRef = useRef<HistoryState>(history);
+  historyRef.current = history;
+
+  const config = history.present.config;
+  const buildPlate = history.present.buildPlate;
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
   const [cameraPreset, setCameraPreset] = useState<CameraPresetId>('iso');
   const [cameraNonce, setCameraNonce] = useState(0);
   const [theme, setTheme] = useState<ThemeMode>(loadInitialTheme);
@@ -161,6 +189,10 @@ export default function App() {
   const [vectorizeDraft, setVectorizeDraft] = useState<ImageVectorizeDraft | null>(null);
   const [showPreload, setShowPreload] = useState(true);
   const [showPWAInstallModal, setShowPWAInstallModal] = useState(false);
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+  const [activeSavedProjectId, setActiveSavedProjectId] = useState<string | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showSavedProjectsModal, setShowSavedProjectsModal] = useState(false);
   const { isInstallable, isInstalled, isIOS, triggerNativeInstall } = usePWAInstall();
   const isOnline = useOnlineStatus();
   const [costSettings, setCostSettings] = useState<CostCalculatorSettings>(
@@ -221,10 +253,92 @@ export default function App() {
     }
   }, [costSettings]);
 
-  // Keyboard shortcuts: "H" toggles Cinema/Zen Mode, "Escape" deselects piece
+  const commitSnapshot = useCallback(
+    (
+      updater: (prev: StudioSnapshot) => StudioSnapshot,
+      mergeKey: string | null = null
+    ) => {
+      const current = historyRef.current;
+      const nextPresent = updater(current.present);
+      const nextHistory = commitHistory(current, nextPresent, { mergeKey });
+      if (nextHistory === current) return;
+      historyRef.current = nextHistory;
+      setHistory(nextHistory);
+    },
+    []
+  );
+
+  const handleUndo = useCallback(() => {
+    const current = historyRef.current;
+    const nextHistory = undoHistory(current);
+    if (nextHistory === current) return;
+    const templateChanged =
+      nextHistory.present.config.template !== current.present.config.template;
+    historyRef.current = nextHistory;
+    setHistory(nextHistory);
+    if (templateChanged) {
+      setCameraPreset('iso');
+      setCameraNonce((n) => n + 1);
+    }
+    setExportNotice('Ação desfeita (Ctrl+Z).');
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    const current = historyRef.current;
+    const nextHistory = redoHistory(current);
+    if (nextHistory === current) return;
+    const templateChanged =
+      nextHistory.present.config.template !== current.present.config.template;
+    historyRef.current = nextHistory;
+    setHistory(nextHistory);
+    if (templateChanged) {
+      setCameraPreset('iso');
+      setCameraNonce((n) => n + 1);
+    }
+    setExportNotice('Ação refeita (Ctrl+Y).');
+  }, []);
+
+  // Load explicitly saved projects from local IndexedDB/storage on mount
+  useEffect(() => {
+    let active = true;
+    void loadAllSavedProjects().then((loaded) => {
+      if (active) {
+        setSavedProjects(loaded);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Y (Undo/Redo), "H" toggles Zen Mode, "Escape" deselects piece
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (vectorizeDraft) return;
+      if (
+        vectorizeDraft ||
+        showPreload ||
+        showPWAInstallModal ||
+        showSaveModal ||
+        showSavedProjectsModal
+      ) {
+        return;
+      }
+
+      const isMod = (e.ctrlKey || e.metaKey) && !e.altKey;
+      if (isMod) {
+        const key = e.key.toLowerCase();
+        if (key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          handleUndo();
+          return;
+        }
+        if ((key === 'y' && !e.shiftKey) || (key === 'z' && e.shiftKey)) {
+          e.preventDefault();
+          handleRedo();
+          return;
+        }
+      }
+
       if (e.key === 'Escape') {
         setPieceSelected(false);
         return;
@@ -244,7 +358,15 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [vectorizeDraft]);
+  }, [
+    vectorizeDraft,
+    showPreload,
+    showPWAInstallModal,
+    showSaveModal,
+    showSavedProjectsModal,
+    handleUndo,
+    handleRedo,
+  ]);
 
   // Sync theme mode to <html class="dark"> and localStorage
   useEffect(() => {
@@ -283,68 +405,81 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [exportNotice]);
 
-  const handleChangeBuildPlate = useCallback((nextBed: BuildPlateSize) => {
-    setBuildPlate(nextBed);
-    setConfig((prev) => {
-      const nextBounds = getTemplateDimensionBounds(prev.template, nextBed, {
-        boxLetterLayout: prev.boxLetterLayout,
-        svgAttachMode: prev.svgAttachMode,
+  const handleChangeBuildPlate = useCallback(
+    (nextBed: BuildPlateSize) => {
+      let wasClamped = false;
+      commitSnapshot((prev) => {
+        const nextBounds = getTemplateDimensionBounds(prev.config.template, nextBed, {
+          boxLetterLayout: prev.config.boxLetterLayout,
+          svgAttachMode: prev.config.svgAttachMode,
+        });
+        const currentDims = extractDimensions(prev.config);
+        const clamped = clampDimensionsToBounds(currentDims, nextBounds, true);
+        wasClamped =
+          clamped.widthMm !== currentDims.widthMm ||
+          clamped.heightMm !== currentDims.heightMm ||
+          clamped.depthMm !== currentDims.depthMm;
+        return {
+          buildPlate: nextBed,
+          config: wasClamped ? { ...prev.config, ...clamped } : prev.config,
+        };
       });
-      const current = extractDimensions(prev);
-      const clamped = clampDimensionsToBounds(current, nextBounds, true);
-      const wasClamped =
-        clamped.widthMm !== current.widthMm ||
-        clamped.heightMm !== current.heightMm ||
-        clamped.depthMm !== current.depthMm;
       if (wasClamped) {
         setExportNotice(
           `Peça redimensionada automaticamente para caber na mesa ${nextBed.widthMm}×${nextBed.depthMm} mm.`
         );
       }
-      return wasClamped ? { ...prev, ...clamped } : prev;
-    });
-  }, []);
+    },
+    [commitSnapshot]
+  );
 
   const handleSelectTemplate = useCallback(
     (template: TemplateId) => {
-      setConfig((prev) => {
+      commitSnapshot((prev) => {
         const defaults = createDefaultConfig(template);
-        const bounds = getTemplateDimensionBounds(template, buildPlate, {
+        const bounds = getTemplateDimensionBounds(template, prev.buildPlate, {
           boxLetterLayout: defaults.boxLetterLayout,
           svgAttachMode: defaults.svgAttachMode,
         });
         const clamped = clampDimensionsToBounds(extractDimensions(defaults), bounds, true);
-        if (template === 'svg-keychain' || prev.template === 'svg-keychain') {
-          return { ...defaults, ...clamped };
+        if (template === 'svg-keychain' || prev.config.template === 'svg-keychain') {
+          return {
+            buildPlate: prev.buildPlate,
+            config: { ...defaults, ...clamped },
+          };
         }
-        const prevValidation = validateProjectText(prev.text, 14);
+        const prevValidation = validateProjectText(prev.config.text, 14);
         const isPreviousDefault = Object.values(TEMPLATES).some(
           (t) => t.defaultText.toUpperCase() === prevValidation.normalized
         );
         return {
-          ...defaults,
-          ...clamped,
-          text:
-            prevValidation.valid && !isPreviousDefault
-              ? prev.text
-              : defaults.text,
+          buildPlate: prev.buildPlate,
+          config: {
+            ...defaults,
+            ...clamped,
+            text:
+              prevValidation.valid && !isPreviousDefault
+                ? prev.config.text
+                : defaults.text,
+          },
         };
       });
       setCameraPreset('iso');
       setCameraNonce((n) => n + 1);
     },
-    [buildPlate]
+    [commitSnapshot]
   );
 
   const handleUpdateConfig = useCallback(
     (patch: Partial<ProjectConfig>) => {
-      setConfig((prev) => {
-        const merged = { ...prev, ...patch };
+      const mergeKey = inferConfigMergeKey(patch);
+      commitSnapshot((prev) => {
+        const merged = { ...prev.config, ...patch };
         if (
           patch.boxLetterLayout !== undefined ||
           patch.svgAttachMode !== undefined
         ) {
-          const nextBounds = getTemplateDimensionBounds(merged.template, buildPlate, {
+          const nextBounds = getTemplateDimensionBounds(merged.template, prev.buildPlate, {
             boxLetterLayout: merged.boxLetterLayout,
             svgAttachMode: merged.svgAttachMode,
           });
@@ -353,12 +488,18 @@ export default function App() {
             nextBounds,
             true
           );
-          return { ...merged, ...clamped };
+          return {
+            buildPlate: prev.buildPlate,
+            config: { ...merged, ...clamped },
+          };
         }
-        return merged;
-      });
+        return {
+          buildPlate: prev.buildPlate,
+          config: merged,
+        };
+      }, mergeKey);
     },
-    [buildPlate]
+    [commitSnapshot]
   );
 
   const handleOpenVectorizeDraft = useCallback((draft: ImageVectorizeDraft) => {
@@ -389,64 +530,76 @@ export default function App() {
     config.imageDespeckle,
   ]);
 
-  const handleApproveVectorize = useCallback((approved: ApprovedVectorizeResult) => {
-    setConfig((prev) => ({
-      ...prev,
-      svgSourceType: 'image',
-      svgFileName: approved.fileName,
-      imagePixels: approved.pixels,
-      imageThreshold: approved.options.threshold,
-      imageInvert: approved.options.invert,
-      imageTraceMode: approved.options.traceMode,
-      imageSmoothness: approved.options.smoothness,
-      imageDespeckle: approved.options.despeckle,
-    }));
-    setVectorizeDraft(null);
-    setExportNotice(`Vetorização de ${approved.fileName} aprovada e aplicada ao chaveiro 3D.`);
-  }, []);
+  const handleApproveVectorize = useCallback(
+    (approved: ApprovedVectorizeResult) => {
+      commitSnapshot((prev) => ({
+        buildPlate: prev.buildPlate,
+        config: {
+          ...prev.config,
+          svgSourceType: 'image',
+          svgFileName: approved.fileName,
+          imagePixels: approved.pixels,
+          imageThreshold: approved.options.threshold,
+          imageInvert: approved.options.invert,
+          imageTraceMode: approved.options.traceMode,
+          imageSmoothness: approved.options.smoothness,
+          imageDespeckle: approved.options.despeckle,
+        },
+      }));
+      setVectorizeDraft(null);
+      setExportNotice(`Vetorização de ${approved.fileName} aprovada e aplicada ao chaveiro 3D.`);
+    },
+    [commitSnapshot]
+  );
 
   const handleDimensionsBatchChange = useCallback(
     (dims: Dimensions3D) => {
-      setConfig((prev) => {
-        const bounds = getTemplateDimensionBounds(prev.template, buildPlate, {
-          boxLetterLayout: prev.boxLetterLayout,
-          svgAttachMode: prev.svgAttachMode,
+      commitSnapshot((prev) => {
+        const bounds = getTemplateDimensionBounds(prev.config.template, prev.buildPlate, {
+          boxLetterLayout: prev.config.boxLetterLayout,
+          svgAttachMode: prev.config.svgAttachMode,
         });
         const clamped = clampDimensionsToBounds(dims, bounds, false);
         return {
-          ...prev,
-          widthMm: clamped.widthMm,
-          heightMm: clamped.heightMm,
-          depthMm: clamped.depthMm,
+          buildPlate: prev.buildPlate,
+          config: {
+            ...prev.config,
+            widthMm: clamped.widthMm,
+            heightMm: clamped.heightMm,
+            depthMm: clamped.depthMm,
+          },
         };
-      });
+      }, 'gizmo:dimensions');
     },
-    [buildPlate]
+    [commitSnapshot]
   );
 
   const handleDimensionAxisChange = useCallback(
     (axis: DimensionAxis, value: number) => {
-      setConfig((prev) => {
-        const bounds = getTemplateDimensionBounds(prev.template, buildPlate, {
-          boxLetterLayout: prev.boxLetterLayout,
-          svgAttachMode: prev.svgAttachMode,
+      commitSnapshot((prev) => {
+        const bounds = getTemplateDimensionBounds(prev.config.template, prev.buildPlate, {
+          boxLetterLayout: prev.config.boxLetterLayout,
+          svgAttachMode: prev.config.svgAttachMode,
         });
         const scaled = scaleDimensions(
-          extractDimensions(prev),
+          extractDimensions(prev.config),
           axis,
           value,
           lockProportions,
           bounds
         );
         return {
-          ...prev,
-          widthMm: scaled.widthMm,
-          heightMm: scaled.heightMm,
-          depthMm: scaled.depthMm,
+          buildPlate: prev.buildPlate,
+          config: {
+            ...prev.config,
+            widthMm: scaled.widthMm,
+            heightMm: scaled.heightMm,
+            depthMm: scaled.depthMm,
+          },
         };
-      });
+      }, `dim:${axis}`);
     },
-    [lockProportions, buildPlate]
+    [lockProportions, commitSnapshot]
   );
 
   const handleToggleLockProportions = useCallback(() => {
@@ -459,18 +612,21 @@ export default function App() {
   }, []);
 
   const handleResetDefaults = useCallback(() => {
-    setConfig((prev) => {
-      const defaults = createDefaultConfig(prev.template);
-      const bounds = getTemplateDimensionBounds(defaults.template, buildPlate, {
+    commitSnapshot((prev) => {
+      const defaults = createDefaultConfig(prev.config.template);
+      const bounds = getTemplateDimensionBounds(defaults.template, prev.buildPlate, {
         boxLetterLayout: defaults.boxLetterLayout,
         svgAttachMode: defaults.svgAttachMode,
       });
       const clamped = clampDimensionsToBounds(extractDimensions(defaults), bounds, true);
-      return { ...defaults, ...clamped };
+      return {
+        buildPlate: prev.buildPlate,
+        config: { ...defaults, ...clamped },
+      };
     });
     setCameraPreset('iso');
     setCameraNonce((n) => n + 1);
-  }, [buildPlate]);
+  }, [commitSnapshot]);
 
   const exportSlugLabel = useMemo(() => {
     if (config.template === 'svg-keychain') {
@@ -516,6 +672,59 @@ export default function App() {
     setExportNotice(`Arquivo ${filename} exportado em milímetros.`);
   }, [config.template, exportSlugLabel, isModelValid]);
 
+  const activeSavedProjectName = useMemo(
+    () => savedProjects.find((p) => p.id === activeSavedProjectId)?.name ?? null,
+    [savedProjects, activeSavedProjectId]
+  );
+
+  const handleConfirmSaveProject = useCallback(
+    (name: string) => {
+      const { list, saved, updatedExisting } = upsertSavedProjectInList(
+        savedProjects,
+        {
+          name,
+          config,
+          buildPlate,
+        }
+      );
+      setSavedProjects(list);
+      setActiveSavedProjectId(saved.id);
+      setShowSaveModal(false);
+      void persistSavedProject(saved);
+      setExportNotice(
+        updatedExisting
+          ? `Projeto "${saved.name}" atualizado nos Projetos salvos.`
+          : `Projeto "${saved.name}" salvo com sucesso.`
+      );
+    },
+    [savedProjects, config, buildPlate]
+  );
+
+  const handleLoadSavedProject = useCallback(
+    (project: SavedProject) => {
+      commitSnapshot(() => ({
+        config: cloneProjectConfig(project.config),
+        buildPlate: { ...project.buildPlate },
+      }));
+      setActiveSavedProjectId(project.id);
+      setShowSavedProjectsModal(false);
+      setCameraPreset('iso');
+      setCameraNonce((n) => n + 1);
+      setExportNotice(`Projeto "${project.name}" carregado no estúdio.`);
+    },
+    [commitSnapshot]
+  );
+
+  const handleDeleteSavedProject = useCallback(
+    (projectId: string) => {
+      setSavedProjects((prev) => prev.filter((p) => p.id !== projectId));
+      setActiveSavedProjectId((prevId) => (prevId === projectId ? null : prevId));
+      void removeSavedProject(projectId);
+      setExportNotice('Projeto removido dos Projetos salvos.');
+    },
+    []
+  );
+
   const activeMeta = TEMPLATES[config.template];
 
   return (
@@ -528,12 +737,15 @@ export default function App() {
         finish={config.finish}
         costSettings={costSettings}
         isPWAInstalled={isInstalled}
+        savedProjectsCount={savedProjects.length}
         onSelectTemplate={handleSelectTemplate}
         onChangeBuildPlate={handleChangeBuildPlate}
         onChangeCostSettings={setCostSettings}
         onToggleTheme={handleToggleTheme}
         onOpenPWAInstall={handleOpenPWAInstall}
         onOpenPreload={() => setShowPreload(true)}
+        onOpenSaveModal={() => setShowSaveModal(true)}
+        onOpenSavedProjects={() => setShowSavedProjectsModal(true)}
         onDownloadSTL={handleDownloadSTL}
         canExport={isModelValid}
       />
@@ -584,7 +796,7 @@ export default function App() {
             aria-live="polite"
             data-testid="status-notice"
             className={`fixed ${
-              pieceSelected ? 'bottom-44 sm:bottom-48' : 'top-[68px]'
+              pieceSelected ? 'bottom-44 sm:bottom-48' : 'top-[134px] sm:top-[68px]'
             } right-4 sm:right-6 z-20 rounded-lg border border-[#159A6E]/30 dark:border-[#34D399]/35 bg-white dark:bg-[#142922] px-3.5 py-2 text-xs font-medium text-[#14533C] dark:text-[#A7F3D0] shadow-sm`}
           >
             {exportNotice}
@@ -601,6 +813,10 @@ export default function App() {
         metrics={effectiveMetrics}
         collapsed={dockCollapsed}
         lockProportions={lockProportions}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onToggleCollapse={() => setDockCollapsed((c) => !c)}
         onToggleLockProportions={handleToggleLockProportions}
         onUpdateConfig={handleUpdateConfig}
@@ -643,6 +859,29 @@ export default function App() {
         isIOS={isIOS}
         onTriggerNativeInstall={triggerNativeInstall}
         onClose={() => setShowPWAInstallModal(false)}
+      />
+
+      {/* Explicit Save Project Name Modal */}
+      <SaveProjectModal
+        open={showSaveModal}
+        config={config}
+        buildPlate={buildPlate}
+        metrics={effectiveMetrics}
+        savedProjects={savedProjects}
+        activeProjectName={activeSavedProjectName}
+        onSave={handleConfirmSaveProject}
+        onCancel={() => setShowSaveModal(false)}
+      />
+
+      {/* Saved Projects Browser Modal */}
+      <SavedProjectsModal
+        open={showSavedProjectsModal}
+        projects={savedProjects}
+        activeSavedProjectId={activeSavedProjectId}
+        onLoadProject={handleLoadSavedProject}
+        onDeleteProject={handleDeleteSavedProject}
+        onOpenSaveCurrent={() => setShowSaveModal(true)}
+        onClose={() => setShowSavedProjectsModal(false)}
       />
 
       {/* Non-intrusive offline PWA connectivity indicator */}

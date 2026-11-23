@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+import type { KeyringDirection } from '../types/project';
 
 export interface FirstLetterTopAnchor {
   /** Center X of the best solid horizontal run near the top edge of the chosen letter */
@@ -20,6 +21,25 @@ export interface FirstLetterTopAnchor {
   recommendedMajorRadius: number;
 }
 
+export interface DirectionalSilhouetteAnchor {
+  /** Exact contour boundary X in 2D shape space (mm) for negative arch carving */
+  x: number;
+  /** Exact contour boundary Y in 2D shape space (mm) for negative arch carving */
+  y: number;
+  /** Outward unit vector X oriented so (-ux, -uy) enters deep into solid material */
+  ux: number;
+  /** Outward unit vector Y oriented so (-ux, -uy) enters deep into solid material */
+  uy: number;
+  /** Protruding anchor X advanced to clear any local dual-lobe valley (for 'hole' and 'loop') */
+  protrudeX: number;
+  /** Protruding anchor Y advanced to clear any local dual-lobe valley (for 'hole' and 'loop') */
+  protrudeY: number;
+  /** Nominal cardinal unit vector X */
+  cardinalUx: number;
+  /** Nominal cardinal unit vector Y */
+  cardinalUy: number;
+}
+
 export interface NegativeArchPlacement {
   /** World-space center of the negative torus */
   center: [number, number, number];
@@ -29,6 +49,32 @@ export interface NegativeArchPlacement {
   tubeRadius: number;
   /** Euler rotation [rx, ry, rz] orienting the torus ring */
   rotation: [number, number, number];
+  /** Optional outward horizontal extension (mm) ensuring the side exit punches cleanly through outer bevels */
+  exitExtensionMm?: number;
+}
+
+export function getCardinalDirectionVector(direction: KeyringDirection): {
+  ux: number;
+  uy: number;
+} {
+  switch (direction) {
+    case 'top':
+      return { ux: 0, uy: 1 };
+    case 'top-right':
+      return { ux: Math.SQRT1_2, uy: Math.SQRT1_2 };
+    case 'right':
+      return { ux: 1, uy: 0 };
+    case 'bottom-right':
+      return { ux: Math.SQRT1_2, uy: -Math.SQRT1_2 };
+    case 'bottom':
+      return { ux: 0, uy: -1 };
+    case 'bottom-left':
+      return { ux: -Math.SQRT1_2, uy: -Math.SQRT1_2 };
+    case 'left':
+      return { ux: -1, uy: 0 };
+    case 'top-left':
+      return { ux: -Math.SQRT1_2, uy: Math.SQRT1_2 };
+  }
 }
 
 function pointInRing2D(px: number, py: number, ring: THREE.Vector2[]): boolean {
@@ -56,7 +102,7 @@ interface SampledShapePoly {
 
 function sampleShapes(shapes: THREE.Shape[]): SampledShapePoly[] {
   return shapes.map((sh) => {
-    const outer = sh.getPoints(28);
+    const outer = sh.getPoints(36);
     const holes = sh.holes.map((h) => h.getPoints(20));
     let minX = Infinity;
     let maxX = -Infinity;
@@ -88,6 +134,195 @@ function isPointInPolys(x: number, y: number, polys: SampledShapePoly[]): boolea
   return false;
 }
 
+/**
+ * Finds the optimal outer contour anchor point on 2D keychain shapes for any of the
+ * 8 cardinal/intercardinal directions ('top', 'top-right', 'right', 'bottom-right',
+ * 'bottom', 'bottom-left', 'left', 'top-left').
+ *
+ * Subdivides straight and curved polygon edges densely so polygons like stars, bolts,
+ * crowns, capsules, hearts, and rectangles all yield accurate boundary coordinates,
+ * and verifies that stepping inward along (-ux, -uy) lands inside thick solid material
+ * while stepping outward along (+ux, +uy) exits cleanly outside the perimeter.
+ */
+export function findDirectionalSilhouetteAnchor(
+  shapes: THREE.Shape[],
+  direction: KeyringDirection = 'top'
+): DirectionalSilhouetteAnchor {
+  const { ux: cux, uy: cuy } = getCardinalDirectionVector(direction);
+  const polys = sampleShapes(shapes);
+  const pts: THREE.Vector2[] = [];
+  const stepMm = 0.35;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (const poly of polys) {
+    const raw = poly.outer;
+    if (raw.length < 2) continue;
+    for (let i = 0; i < raw.length; i++) {
+      const a = raw[i];
+      const b = raw[(i + 1) % raw.length];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      const steps = Math.max(1, Math.ceil(dist / stepMm));
+      for (let s = 0; s < steps; s++) {
+        const t = s / steps;
+        const px = a.x + (b.x - a.x) * t;
+        const py = a.y + (b.y - a.y) * t;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+        pts.push(new THREE.Vector2(px, py));
+      }
+    }
+  }
+
+  if (pts.length === 0 || !Number.isFinite(minX)) {
+    return {
+      x: cux * 18,
+      y: cuy * 18,
+      ux: cux,
+      uy: cuy,
+      protrudeX: cux * 18,
+      protrudeY: cuy * 18,
+      cardinalUx: cux,
+      cardinalUy: cuy,
+    };
+  }
+
+  const cx = (minX + maxX) * 0.5;
+  const cy = (minY + maxY) * 0.5;
+
+  const getProj = (p: { x: number; y: number }) => (p.x - cx) * cux + (p.y - cy) * cuy;
+  const getPerp = (p: { x: number; y: number }) => -(p.x - cx) * cuy + (p.y - cy) * cux;
+
+  let maxProj = -Infinity;
+  for (const p of pts) {
+    const pr = getProj(p);
+    if (pr > maxProj) maxProj = pr;
+  }
+
+  // Average perpendicular coordinate in the extreme 2.2mm band to detect symmetric dual-lobe crowns
+  const bandPts = pts.filter((p) => getProj(p) >= maxProj - 2.2);
+  let sumPerp = 0;
+  for (const p of bandPts) sumPerp += getPerp(p);
+  const meanPerp = bandPts.length > 0 ? sumPerp / bandPts.length : 0;
+
+  // Prefer the actual contour point right on the centerline (|perp - meanPerp| <= 1.2mm)
+  // unless there is a deep concavity (> 4.5mm) at the centerline (like between bottom star legs)
+  let bestPt = bandPts[0] ?? pts[0];
+  let centerMaxProj = -Infinity;
+  let centerCandidate: THREE.Vector2 | null = null;
+
+  for (const p of pts) {
+    const pr = getProj(p);
+    if (pr <= 0) continue;
+    const pe = Math.abs(getPerp(p) - meanPerp);
+    if (pe <= 1.1 && pr > centerMaxProj) {
+      centerMaxProj = pr;
+      centerCandidate = p;
+    }
+  }
+
+  if (centerCandidate && maxProj - centerMaxProj <= 4.5) {
+    bestPt = centerCandidate;
+  } else {
+    let bestDist = Infinity;
+    for (const p of bandPts) {
+      const d = Math.abs(getPerp(p) - meanPerp);
+      if (d < bestDist) {
+        bestDist = d;
+        bestPt = p;
+      }
+    }
+  }
+
+  // Refine local contour point and outward direction within a small neighborhood (<= 3.2mm, +-35 deg)
+  // so that stepping inward by 2.15mm lands in the widest solid cross-section of the lobe/edge
+  // and stepping outward by 0.45mm is strictly outside the shape.
+  const baseAngle = Math.atan2(cuy, cux);
+  const localCandidates = pts.filter(
+    (p) => Math.hypot(p.x - bestPt.x, p.y - bestPt.y) <= 3.2
+  );
+
+  let chosenX = bestPt.x;
+  let chosenY = bestPt.y;
+  let chosenUx = cux;
+  let chosenUy = cuy;
+  let bestScore = -Infinity;
+
+  for (const cand of localCandidates) {
+    for (let da = -35; da <= 35; da += 7) {
+      const ang = baseAngle + (da * Math.PI) / 180;
+      const ux = Math.cos(ang);
+      const uy = Math.sin(ang);
+      const inX = cand.x - ux * 2.15;
+      const inY = cand.y - uy * 2.15;
+      const outX = cand.x + ux * 0.45;
+      const outY = cand.y + uy * 0.45;
+
+      if (!isPointInPolys(inX, inY, polys) || isPointInPolys(outX, outY, polys)) {
+        continue;
+      }
+
+      // Measure lateral solid clearance perpendicular to (ux, uy) at the tunnel entrance (inX, inY)
+      const px = -uy;
+      const py = ux;
+      let leftClear = 0;
+      let rightClear = 0;
+      for (let step = 0.25; step <= 3.5; step += 0.25) {
+        if (isPointInPolys(inX + px * step, inY + py * step, polys)) leftClear = step;
+        else break;
+      }
+      for (let step = 0.25; step <= 3.5; step += 0.25) {
+        if (isPointInPolys(inX - px * step, inY - py * step, polys)) rightClear = step;
+        else break;
+      }
+
+      const minClear = Math.min(leftClear, rightClear);
+      const distPenalty = Math.hypot(cand.x - bestPt.x, cand.y - bestPt.y) * 0.45;
+      const anglePenalty = (Math.abs(da) / 35) * 0.65;
+      const score = minClear * 3.0 - distPenalty - anglePenalty;
+
+      if (score > bestScore) {
+        bestScore = score;
+        chosenX = cand.x;
+        chosenY = cand.y;
+        chosenUx = ux;
+        chosenUy = uy;
+      }
+    }
+  }
+
+  // For protruding tabs ('hole' and 'loop'), check the maximum projection within +-4.2mm perpendicular
+  // to chosen point so dual-lobe valleys (like paw toes) advance the protruding hole clear of adjacent lobes
+  const chosenProj = getProj({ x: chosenX, y: chosenY });
+  const chosenPerp = getPerp({ x: chosenX, y: chosenY });
+  let localBandMaxProj = chosenProj;
+  for (const p of pts) {
+    if (Math.abs(getPerp(p) - chosenPerp) <= 4.2) {
+      const pr = getProj(p);
+      if (pr > localBandMaxProj) localBandMaxProj = pr;
+    }
+  }
+  const extraAdvance = THREE.MathUtils.clamp(localBandMaxProj - chosenProj, 0, 2.8);
+  const protrudeX = chosenX + cux * extraAdvance;
+  const protrudeY = chosenY + cuy * extraAdvance;
+
+  return {
+    x: chosenX,
+    y: chosenY,
+    ux: chosenUx,
+    uy: chosenUy,
+    protrudeX,
+    protrudeY,
+    cardinalUx: cux,
+    cardinalUy: cuy,
+  };
+}
+
 interface CandidateRunEvaluation {
   anchor: FirstLetterTopAnchor;
   score: number;
@@ -97,10 +332,6 @@ function computeRecommendedArchRadii(solidWidth: number): {
   recommendedTubeRadius: number;
   recommendedMajorRadius: number;
 } {
-  // Minimum 0.9mm side wall on BOTH sides of the hole (1.8mm total wall margin)
-  // and at most 21% of the stroke's minimum solid width across the tunnel depth.
-  // Capped to [0.85mm .. 1.15mm] (1.7mm .. 2.3mm hole diameter) so it fits standard
-  // keyring jump rings comfortably while never looking oversized or breaking thin strokes.
   const maxSafeByWall = (solidWidth - 1.8) * 0.5;
   const proportional = solidWidth * 0.21;
   const recommendedTubeRadius = THREE.MathUtils.clamp(
@@ -108,7 +339,6 @@ function computeRecommendedArchRadii(solidWidth: number): {
     0.85,
     1.15
   );
-  // Major radius proportional to tube radius and stroke thickness, leaving a strong bridge
   const recommendedMajorRadius = THREE.MathUtils.clamp(
     Math.max(recommendedTubeRadius * 2.25, Math.min(solidWidth * 0.42, 2.75)),
     2.1,
@@ -145,14 +375,6 @@ function evaluateLetterTopCandidates(
   const topY = maxY > 0 ? maxY : fallbackCapY;
   const samples = 112;
 
-  interface Run {
-    startX: number;
-    endX: number;
-    midX: number;
-    width: number;
-    localTopY: number;
-  }
-
   const findLocalTopY = (x: number): number => {
     for (let s = 100; s >= 75; s--) {
       const y = topY * (s / 100);
@@ -163,12 +385,6 @@ function evaluateLetterTopCandidates(
     return topY * 0.96;
   };
 
-  // Evaluate every candidate center X across the letter by measuring the continuous solid
-  // horizontal interval [leftEdge(y), rightEdge(y)] at multiple Y depths of the tunnel.
-  // Because the arch enters at the top edge (~95% of localTopY) and curves down to ~80% of localTopY,
-  // we measure the worst-case horizontal clearance from candidateX to the nearest side edge
-  // across the tunnel depth so curved letters (S, O, C, G, B, R) and angled letters (A, V, W, Y)
-  // are placed where the stroke is widest and best centered!
   const stepX = glyphW / samples;
 
   const measureSymmetricWidthAt = (cx: number, yLevels: number[]): number => {
@@ -196,12 +412,8 @@ function evaluateLetterTopCandidates(
   for (let i = 1; i < samples; i++) {
     const candidateX = minX + (i / samples) * glyphW;
     const localTopY = findLocalTopY(candidateX);
-    // Require the column to reach near the top of the letter (>= 88% of maxY)
     if (localTopY < topY * 0.88) continue;
 
-    // Probe across the arch depth from right at the top entrance (98.5%) down to 82% of localTopY.
-    // Including 98.5% ensures tapered apexes (like 'A') are measured by their narrow top entrance
-    // rather than wider lower sections, preventing the top opening from coming near the sloped side walls.
     const yLevels = [
       localTopY * 0.985,
       localTopY * 0.95,
@@ -211,7 +423,6 @@ function evaluateLetterTopCandidates(
     ];
     let effectiveSolidWidth = measureSymmetricWidthAt(candidateX, yLevels);
     if (effectiveSolidWidth < 1.2) {
-      // Fallback for shallower top bars (like E, F, T, Z top horizontal bar)
       effectiveSolidWidth = measureSymmetricWidthAt(candidateX, [
         localTopY * 0.98,
         localTopY * 0.94,
@@ -346,7 +557,6 @@ export function findBestWordTopAnchor(
  */
 function prepareForCSG(geo: THREE.BufferGeometry): THREE.BufferGeometry {
   const clean = geo.index ? geo.toNonIndexed() : geo.clone();
-  // Remove UV or extraneous attributes so solid & cutter have identical attribute layouts
   for (const key of Object.keys(clean.attributes)) {
     if (key !== 'position' && key !== 'normal') {
       clean.deleteAttribute(key);
@@ -359,6 +569,96 @@ function prepareForCSG(geo: THREE.BufferGeometry): THREE.BufferGeometry {
   return clean;
 }
 
+/**
+ * Bakes realistic cavity ambient-occlusion vertex colors onto the interior surface
+ * of the carved negative arch tunnel so that even on bright white filament (#F3F5F8)
+ * and top/isometric views without hardware raytraced shadows, the curved hole is
+ * visually crisp, deep, and unmistakable while leaving exported STL/OBJ untouched.
+ */
+function applyArchCavityVertexOcclusion(
+  geo: THREE.BufferGeometry,
+  placement: NegativeArchPlacement
+): void {
+  const pos = geo.getAttribute('position');
+  const norm = geo.getAttribute('normal');
+  if (!pos) return;
+
+  const count = pos.count;
+  const colors = new Float32Array(count * 3);
+  const [cx, cy, cz] = placement.center;
+  const rotY = placement.rotation[1];
+  const cosY = Math.cos(rotY);
+  const sinY = Math.sin(rotY);
+  const majorR = placement.majorRadius;
+  const tubeR = placement.tubeRadius;
+  const dirX = cosY;
+  const dirZ = -sinY;
+  const entranceX = cx - dirX * majorR;
+  const entranceZ = cz - dirZ * majorR;
+
+  for (let i = 0; i < count; i++) {
+    const vx = pos.getX(i);
+    const vy = pos.getY(i);
+    const vz = pos.getZ(i);
+
+    const dx = vx - cx;
+    const dy = vy - cy;
+    const dz = vz - cz;
+
+    // Transform into torus local space (where torus ring lies in XY plane)
+    const lx = dx * cosY - dz * sinY;
+    const ly = dy;
+    const lz = dx * sinY + dz * cosY;
+
+    const ringR = Math.hypot(lx, ly);
+    const distToTorusTube = Math.hypot(ringR - majorR, lz);
+    const distToExitCyl =
+      lx >= -0.1 ? Math.hypot(ly + majorR, lz) : Infinity;
+    const distToEntranceShaft =
+      vy >= cy - 0.6
+        ? Math.hypot(vx - entranceX, vz - entranceZ)
+        : Infinity;
+
+    const minDist = Math.min(
+      distToTorusTube,
+      distToExitCyl,
+      distToEntranceShaft
+    );
+
+    if (minDist <= tubeR + 0.16) {
+      // Deep linear cavity shade (0.025..0.055 linear -> ~#222834 sRGB) so the recessed
+      // tunnel interior contrasts strongly against white/colored baseplates.
+      const depthFactor = THREE.MathUtils.clamp((cy - vy) / (majorR + 0.5), 0, 1);
+      const shade = 0.055 - depthFactor * 0.03;
+      colors[i * 3] = shade;
+      colors[i * 3 + 1] = shade * 1.05;
+      colors[i * 3 + 2] = shade * 1.18;
+
+      // Tilt upward cavity floor normals horizontally so overhead RoomEnvironment
+      // specular reflection doesn't wash out the dark interior tunnel from top view
+      if (norm && norm.getY(i) > 0.15) {
+        const nx = norm.getX(i);
+        const nz = norm.getZ(i);
+        const hLen = Math.hypot(nx, nz);
+        if (hLen > 1e-3) {
+          norm.setXYZ(i, (nx / hLen) * 0.98, -0.2, (nz / hLen) * 0.98);
+        } else {
+          norm.setXYZ(i, dirX * 0.98, -0.2, dirZ * 0.98);
+        }
+      }
+    } else {
+      colors[i * 3] = 1;
+      colors[i * 3 + 1] = 1;
+      colors[i * 3 + 2] = 1;
+    }
+  }
+
+  if (norm) {
+    norm.needsUpdate = true;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}
+
 const _csgEvaluator = new Evaluator();
 _csgEvaluator.useGroups = false;
 _csgEvaluator.attributes = ['position', 'normal'];
@@ -366,14 +666,6 @@ _csgEvaluator.attributes = ['position', 'normal'];
 /**
  * Carves a real 3D curved negative torus arch ("arco negativo") out of `solidGeo`
  * using watertight BVH-CSG boolean subtraction.
- *
- * The torus straddles the top-rear edge of the first letter:
- *  - Enters through the top horizontal surface (+Y)
- *  - Curves smoothly inside the solid material with safe wall thickness
- *  - Exits through the rear vertical wall (-Z)
- *
- * Returns a brand-new BufferGeometry with the curved tunnel physically carved out
- * (visible in the 3D viewport AND exported hollow in Binary STL / OBJ!).
  */
 export function subtractNegativeKeyringArch(
   solidGeo: THREE.BufferGeometry,
@@ -390,7 +682,7 @@ export function subtractNegativeKeyringArch(
   const preparedTorus = prepareForCSG(torusGeo);
   torusGeo.dispose();
 
-  const solidBrush = new Brush(preparedSolid);
+  let solidBrush = new Brush(preparedSolid);
   solidBrush.updateMatrixWorld(true);
 
   const holeBrush = new Brush(preparedTorus);
@@ -407,15 +699,96 @@ export function subtractNegativeKeyringArch(
   holeBrush.updateMatrixWorld(true);
 
   try {
-    const resultBrush = _csgEvaluator.evaluate(solidBrush, holeBrush, SUBTRACTION);
-    const outGeo = resultBrush.geometry;
-    // Dispose temporary inputs
-    preparedSolid.dispose();
+    solidBrush = _csgEvaluator.evaluate(solidBrush, holeBrush, SUBTRACTION);
     preparedTorus.dispose();
+
+    if (placement.exitExtensionMm && placement.exitExtensionMm > 0) {
+      const rotY = placement.rotation[1];
+      const dirX = Math.cos(rotY);
+      const dirZ = -Math.sin(rotY);
+      const extLen = placement.exitExtensionMm;
+      const exitCyl = new THREE.CylinderGeometry(
+        placement.tubeRadius,
+        placement.tubeRadius,
+        extLen,
+        24
+      );
+      exitCyl.rotateZ(Math.PI * 0.5);
+      const preparedExit = prepareForCSG(exitCyl);
+      exitCyl.dispose();
+
+      const exitBrush = new Brush(preparedExit);
+      exitBrush.position.set(
+        placement.center[0] + dirX * extLen * 0.5,
+        placement.center[1] - placement.majorRadius,
+        placement.center[2] + dirZ * extLen * 0.5
+      );
+      exitBrush.rotation.set(0, rotY, 0);
+      exitBrush.updateMatrixWorld(true);
+
+      solidBrush.updateMatrixWorld(true);
+      solidBrush = _csgEvaluator.evaluate(solidBrush, exitBrush, SUBTRACTION);
+      preparedExit.dispose();
+    }
+
+    const outGeo = solidBrush.geometry;
+    applyArchCavityVertexOcclusion(outGeo, placement);
+    preparedSolid.dispose();
     return outGeo;
   } catch {
-    // Graceful safety fallback: never crash if degenerate geometry occurs
     preparedTorus.dispose();
+    return preparedSolid;
+  }
+}
+
+/**
+ * Carves a vertical entrance clearance shaft directly above the top opening of a
+ * negative keyring arch so raised relief layers or perimeter borders sitting on top
+ * of a keychain baseplate never cover or block the top entrance of the arch tunnel,
+ * while preserving the raised border over the outer arch bridge.
+ */
+export function subtractVerticalKeyringEntrance(
+  solidGeo: THREE.BufferGeometry,
+  placement: NegativeArchPlacement
+): THREE.BufferGeometry {
+  const preparedSolid = prepareForCSG(solidGeo);
+  const rotY = placement.rotation[1];
+  const dirX = Math.cos(rotY);
+  const dirZ = -Math.sin(rotY);
+
+  const entranceX = placement.center[0] - dirX * placement.majorRadius;
+  const entranceZ = placement.center[2] - dirZ * placement.majorRadius;
+  const shaftHeight = 10;
+
+  const cylGeo = new THREE.CylinderGeometry(
+    placement.tubeRadius + 0.06,
+    placement.tubeRadius + 0.06,
+    shaftHeight,
+    28
+  );
+  const preparedCyl = prepareForCSG(cylGeo);
+  cylGeo.dispose();
+
+  const solidBrush = new Brush(preparedSolid);
+  solidBrush.updateMatrixWorld(true);
+
+  const cylBrush = new Brush(preparedCyl);
+  cylBrush.position.set(
+    entranceX,
+    placement.center[1] + shaftHeight * 0.5 - 0.6,
+    entranceZ
+  );
+  cylBrush.updateMatrixWorld(true);
+
+  try {
+    const resultBrush = _csgEvaluator.evaluate(solidBrush, cylBrush, SUBTRACTION);
+    const outGeo = resultBrush.geometry;
+    applyArchCavityVertexOcclusion(outGeo, placement);
+    preparedSolid.dispose();
+    preparedCyl.dispose();
+    return outGeo;
+  } catch {
+    preparedCyl.dispose();
     return preparedSolid;
   }
 }

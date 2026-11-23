@@ -3,6 +3,7 @@ import type {
   FilamentColor,
   FilamentFinishId,
   FontStyleId,
+  KeyringDirection,
   ProjectConfig,
   TemplateId,
   TemplateMeta,
@@ -199,7 +200,25 @@ export const FONT_STYLES: {
   { id: 'wide', label: 'Larga' },
 ];
 
+export const KEYRING_DIRECTIONS: {
+  id: KeyringDirection;
+  label: string;
+  shortLabel: string;
+  row: 0 | 1 | 2;
+  col: 0 | 1 | 2;
+}[] = [
+  { id: 'top-left', label: 'Cima Esquerda', shortLabel: '↖', row: 0, col: 0 },
+  { id: 'top', label: 'Cima', shortLabel: '↑', row: 0, col: 1 },
+  { id: 'top-right', label: 'Cima Direita', shortLabel: '↗', row: 0, col: 2 },
+  { id: 'left', label: 'Esquerda', shortLabel: '←', row: 1, col: 0 },
+  { id: 'right', label: 'Direita', shortLabel: '→', row: 1, col: 2 },
+  { id: 'bottom-left', label: 'Esquerda Baixo', shortLabel: '↙', row: 2, col: 0 },
+  { id: 'bottom', label: 'Baixo', shortLabel: '↓', row: 2, col: 1 },
+  { id: 'bottom-right', label: 'Direita Baixo', shortLabel: '↘', row: 2, col: 2 },
+];
+
 const SHARED_EXTRA_DEFAULTS = {
+  keyringDirection: 'top' as const,
   monogramInitial: '',
   monogramNamePos: 34,
   boxLetterLayout: 'assembled' as const,

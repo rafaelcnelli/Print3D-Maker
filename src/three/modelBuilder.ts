@@ -16,12 +16,14 @@ import {
   subdivideNonIndexedTrianglesByX,
 } from '../core/heartMath';
 import {
+  findDirectionalSilhouetteAnchor,
   findFirstLetterTopAnchor,
   subtractNegativeKeyringArch,
+  subtractVerticalKeyringEntrance,
   type NegativeArchPlacement,
 } from '../core/keyringArch';
 import { buildVectorTextShapes } from '../core/vectorFont';
-import type { ProjectConfig } from '../types/project';
+import type { ProjectConfig, SvgAttachMode } from '../types/project';
 
 export interface BuiltModelResult {
   group: THREE.Group;
@@ -90,6 +92,13 @@ function groundGroupToPlate(group: THREE.Group): void {
 function configurePrintableMesh(mesh: THREE.Mesh): THREE.Mesh {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  if (mesh.geometry.getAttribute('color') && mesh.material instanceof THREE.Material) {
+    const clonedMat = mesh.material.clone() as THREE.MeshStandardMaterial;
+    clonedMat.vertexColors = true;
+    clonedMat.needsUpdate = true;
+    mesh.material = clonedMat;
+    mesh.userData.clonedMaterial = clonedMat;
+  }
   return mesh;
 }
 
@@ -533,71 +542,40 @@ function buildKeychainModel(
   const reliefThick = Math.max(1.4, totalThick - baseThick);
   const bevel = Math.min(config.bevelMm, 0.65);
 
-  const holeRadius = 2.6;
   const isHeart = config.keychainShape === 'heart';
   const radius =
     config.keychainShape === 'capsule' ? H * 0.49 : Math.min(5.5, H * 0.25);
 
-  // Determine eyelet hole coordinates in 2D shape coordinates (X, Y before rotateX(-pi/2))
-  let holeX = 0;
-  let holeY = 0;
-  let textCenterX = 0;
-  let textAvailW = W * 0.78;
-  let textAvailH = H * 0.56;
-  let textCenterY = 0;
+  const attachMode: SvgAttachMode =
+    !config.keyringArch && config.svgAttachMode === 'arch'
+      ? 'hole'
+      : config.svgAttachMode;
 
-  const usePunchedHole = !config.keyringArch;
   let baseShape: THREE.Shape;
   let heartH = H;
+  let textAvailW = W - 14;
+  let textAvailH = H * 0.58;
+  const textCenterX = 0;
+  const textCenterY = isHeart ? -H * 0.02 : -0.6;
 
   if (isHeart) {
     heartH = Math.max(H, W * 0.86);
     baseShape = makeHeartShape(W, heartH, 84, 0);
-    // Shift heart vertically so center sits near (0, 0)
-    const shiftedPts = baseShape.getPoints(80).map((p) => new THREE.Vector2(p.x, p.y - heartH * 0.5));
+    const shiftedPts = baseShape
+      .getPoints(80)
+      .map((p) => new THREE.Vector2(p.x, p.y - heartH * 0.5));
     baseShape = new THREE.Shape(shiftedPts);
-
-    if (usePunchedHole) {
-      if (config.keychainRingPos === 'top') {
-        holeX = 0;
-        holeY = heartH * 0.22;
-        textCenterY = -heartH * 0.04;
-      } else {
-        holeX = -W * 0.34;
-        holeY = heartH * 0.14;
-        textCenterX = W * 0.04;
-        textCenterY = -heartH * 0.02;
-      }
-      addCircularHole(baseShape, holeX, holeY, holeRadius);
-    }
     textAvailW = W * 0.66;
     textAvailH = heartH * 0.3;
   } else {
     baseShape = makeRoundedRectShape(W, H, radius);
-    if (usePunchedHole) {
-      if (config.keychainRingPos === 'left') {
-        holeX = -W * 0.5 + Math.max(6.2, holeRadius + 3.4);
-        holeY = 0;
-        textCenterX = 4.6;
-        textAvailW = W - 21;
-        textAvailH = H * 0.58;
-      } else {
-        holeX = 0;
-        holeY = H * 0.5 - 5.2;
-        textCenterY = -3.4;
-        textAvailW = W - 12;
-        textAvailH = H * 0.44;
-      }
-      addCircularHole(baseShape, holeX, holeY, holeRadius);
-    } else {
-      textCenterX = 0;
-      textCenterY = -0.8;
-      textAvailW = W - 14;
-      textAvailH = H * 0.58;
-    }
   }
 
-  // Build text shapes early so we know the exact first-letter anchor for the negative keyring arch
+  const anchor = findDirectionalSilhouetteAnchor(
+    [baseShape],
+    config.keyringDirection ?? 'top'
+  );
+
   const builtText = buildVectorTextShapes(
     config.text,
     config.fontStyle,
@@ -607,34 +585,25 @@ function buildKeychainModel(
   );
 
   let keychainArchPlacement: NegativeArchPlacement | null = null;
-  if (config.keyringArch && builtText.firstLetterShapes.length > 0) {
-    const anchor = findFirstLetterTopAnchor(
-      builtText.firstLetterShapes,
-      builtText.firstLetterCapY,
-      isHeart
-        ? (x) => getHeartYBounds(textCenterX + x, W, heartH).yMax
-        : undefined,
-      builtText.secondLetterShapes
+  if (attachMode === 'arch') {
+    const baseBevelThick = bevel > 0.05 ? bevel * 0.78 : 0;
+    const baseTopY = baseThick + baseBevelThick;
+    const baseBottomY = -baseBevelThick;
+    const baseHeight = baseTopY - baseBottomY;
+    const tubeRadius = THREE.MathUtils.clamp(baseHeight * 0.26, 0.96, 1.12);
+    const majorRadius = THREE.MathUtils.clamp(baseHeight * 0.55, 2.08, 2.42);
+    const archCenterY = Math.max(
+      baseTopY + 0.05,
+      baseBottomY + majorRadius + tubeRadius + 0.45
     );
-    const archX = textCenterX + anchor.x;
-    const archBackZ = isHeart
-      ? -(getHeartYBounds(archX, W, heartH).yMax - heartH * 0.5)
-      : -H * 0.5;
-    const majorRadius = THREE.MathUtils.clamp(
-      Math.min(anchor.recommendedMajorRadius, totalThick * 0.48),
-      2.1,
-      2.75
-    );
-    const tubeRadius = THREE.MathUtils.clamp(
-      Math.min(anchor.recommendedTubeRadius, totalThick * 0.2),
-      0.85,
-      1.15
-    );
+    const dirX = anchor.ux;
+    const dirZ = -anchor.uy;
     keychainArchPlacement = {
-      center: [archX, totalThick + 0.12, archBackZ - 0.12],
+      center: [anchor.x + dirX * 0.35, archCenterY, -anchor.y + dirZ * 0.35],
       majorRadius,
       tubeRadius,
-      rotation: [0, Math.PI * 0.5, 0],
+      rotation: [0, Math.atan2(anchor.uy, anchor.ux), 0],
+      exitExtensionMm: 2.6,
     };
   }
 
@@ -659,29 +628,7 @@ function buildKeychainModel(
   baseMesh.name = 'KeychainBase';
   group.add(baseMesh);
 
-  // 2. Reinforced Eyelet Collar Ring around hole (only when using classic punched hole)
-  if (usePunchedHole) {
-    const collarShape = new THREE.Shape();
-    collarShape.absarc(holeX, holeY, holeRadius + 2.1, 0, Math.PI * 2, false);
-    addCircularHole(collarShape, holeX, holeY, holeRadius);
-    const collarGeo = new THREE.ExtrudeGeometry(collarShape, {
-      depth: reliefThick * 0.9,
-      bevelEnabled: true,
-      bevelThickness: 0.3,
-      bevelSize: 0.25,
-      bevelSegments: 4,
-      curveSegments: 32,
-    });
-    collarGeo.rotateX(-Math.PI * 0.5);
-    collarGeo.translate(0, baseThick, 0);
-    geometries.push(collarGeo);
-
-    const collarMesh = configurePrintableMesh(new THREE.Mesh(collarGeo, primaryMat));
-    collarMesh.name = 'KeychainEyeletCollar';
-    group.add(collarMesh);
-  }
-
-  // 3. Optional Raised Perimeter Border Rim (dual-color filament swap look!)
+  // 2. Optional Raised Perimeter Border Rim (dual-color filament swap look!)
   if (config.keychainRaisedBorder && !isHeart) {
     const borderOuter = makeRoundedRectShape(W - 1.2, H - 1.2, Math.max(2, radius - 0.8));
     const borderInner = makeRoundedRectShape(W - 4.8, H - 4.8, Math.max(1.5, radius - 2.6));
@@ -699,7 +646,10 @@ function buildKeychainModel(
     borderGeo.rotateX(-Math.PI * 0.5);
     borderGeo.translate(0, baseThick, 0);
     if (keychainArchPlacement) {
-      const carvedBorder = subtractNegativeKeyringArch(borderGeo, keychainArchPlacement);
+      const carvedBorder = subtractVerticalKeyringEntrance(
+        borderGeo,
+        keychainArchPlacement
+      );
       borderGeo.dispose();
       borderGeo = carvedBorder;
     }
@@ -710,7 +660,7 @@ function buildKeychainModel(
     group.add(borderMesh);
   }
 
-  // 4. Raised Name Letters on Top Face
+  // 3. Raised Name Letters on Top Face
   if (builtText.shapes.length > 0) {
     let textGeo: THREE.BufferGeometry = new THREE.ExtrudeGeometry(builtText.shapes, {
       depth: reliefThick,
@@ -723,7 +673,10 @@ function buildKeychainModel(
     textGeo.rotateX(-Math.PI * 0.5);
     textGeo.translate(textCenterX, baseThick, builtText.maxY * 0.5 - textCenterY);
     if (keychainArchPlacement) {
-      const carvedText = subtractNegativeKeyringArch(textGeo, keychainArchPlacement);
+      const carvedText = subtractVerticalKeyringEntrance(
+        textGeo,
+        keychainArchPlacement
+      );
       textGeo.dispose();
       textGeo = carvedText;
     }
@@ -732,6 +685,67 @@ function buildKeychainModel(
     const textMesh = configurePrintableMesh(new THREE.Mesh(textGeo, primaryMat));
     textMesh.name = 'KeychainLetters';
     group.add(textMesh);
+  }
+
+  // 4. Protruding Attachment Modes: 'hole' (punched rounded tab + collar) OR 'loop' (protruding 3D arch)
+  if (attachMode === 'hole') {
+    const holeR = 2.45;
+    const outerTabR = 5.9;
+    const tabCenterX = anchor.protrudeX + anchor.cardinalUx * 2.85;
+    const tabCenterY = anchor.protrudeY + anchor.cardinalUy * 2.85;
+
+    const tabShape = new THREE.Shape();
+    tabShape.absarc(tabCenterX, tabCenterY, outerTabR, 0, Math.PI * 2, false);
+    addCircularHole(tabShape, tabCenterX, tabCenterY, holeR);
+
+    const tabGeo = new THREE.ExtrudeGeometry(tabShape, {
+      depth: baseThick,
+      bevelEnabled: bevel > 0.05,
+      bevelThickness: bevel * 0.65,
+      bevelSize: bevel * 0.65,
+      bevelSegments: 4,
+      curveSegments: 32,
+    });
+    tabGeo.rotateX(-Math.PI * 0.5);
+    geometries.push(tabGeo);
+
+    const tabMesh = configurePrintableMesh(new THREE.Mesh(tabGeo, accentMat));
+    tabMesh.name = 'KeychainHoleTab';
+    group.add(tabMesh);
+
+    const collarShape = new THREE.Shape();
+    collarShape.absarc(tabCenterX, tabCenterY, holeR + 1.85, 0, Math.PI * 2, false);
+    addCircularHole(collarShape, tabCenterX, tabCenterY, holeR);
+
+    const collarGeo = new THREE.ExtrudeGeometry(collarShape, {
+      depth: reliefThick * 0.85,
+      bevelEnabled: true,
+      bevelThickness: 0.25,
+      bevelSize: 0.22,
+      bevelSegments: 3,
+      curveSegments: 32,
+    });
+    collarGeo.rotateX(-Math.PI * 0.5);
+    collarGeo.translate(0, baseThick - 0.1, 0);
+    geometries.push(collarGeo);
+
+    const collarMesh = configurePrintableMesh(new THREE.Mesh(collarGeo, primaryMat));
+    collarMesh.name = 'KeychainEyeletCollar';
+    group.add(collarMesh);
+  } else if (attachMode === 'loop') {
+    const loopMajorR = 4.6;
+    const loopTubeR = Math.min(1.85, Math.max(1.3, baseThick * 0.44));
+    const loopCenterX = anchor.protrudeX + anchor.cardinalUx * (loopMajorR * 0.72);
+    const loopCenterY = anchor.protrudeY + anchor.cardinalUy * (loopMajorR * 0.72);
+
+    const loopGeo = new THREE.TorusGeometry(loopMajorR, loopTubeR, 24, 48);
+    loopGeo.rotateX(Math.PI * 0.5);
+    loopGeo.translate(loopCenterX, baseThick * 0.52, -loopCenterY);
+    geometries.push(loopGeo);
+
+    const loopMesh = configurePrintableMesh(new THREE.Mesh(loopGeo, accentMat));
+    loopMesh.name = 'KeychainArchLoop';
+    group.add(loopMesh);
   }
 
   groundGroupToPlate(group);
@@ -1141,62 +1155,12 @@ function buildBoxLetterModel(
 }
 
 /**
- * Finds a centered top anchor point (X, topY) on 2D keychain base shapes
- * so keyring attachments sit symmetrically at the highest crown of the silhouette.
- */
-function findTopSilhouetteAnchor(shapes: THREE.Shape[]): { x: number; topY: number } {
-  let maxY = -Infinity;
-  const allPts: THREE.Vector2[] = [];
-
-  for (const sh of shapes) {
-    const pts = sh.getPoints(48);
-    for (const p of pts) {
-      allPts.push(p);
-      if (p.y > maxY) maxY = p.y;
-    }
-  }
-
-  if (allPts.length === 0 || !Number.isFinite(maxY)) {
-    return { x: 0, topY: 18 };
-  }
-
-  // Average points within top 2.2mm band to detect centered or symmetric dual-lobe crowns
-  const bandPts = allPts.filter((p) => p.y >= maxY - 2.2);
-  let sumX = 0;
-  for (const p of bandPts) sumX += p.x;
-  const meanX = bandPts.length > 0 ? sumX / bandPts.length : 0;
-
-  // Find the highest silhouette point near meanX (within +-3.5mm) so dual-toe shapes
-  // like Paw anchor symmetrically right at center rather than drifting onto one side lobe
-  const nearCenterPts = allPts.filter((p) => Math.abs(p.x - meanX) <= 3.5);
-  let centerTopY = -Infinity;
-  for (const p of nearCenterPts) {
-    if (p.y > centerTopY) centerTopY = p.y;
-  }
-
-  if (Number.isFinite(centerTopY) && maxY - centerTopY <= 4.5) {
-    return { x: meanX, topY: centerTopY };
-  }
-
-  let best = bandPts[0];
-  let bestDist = Infinity;
-  for (const p of bandPts) {
-    const d = Math.abs(p.x - meanX);
-    if (d < bestDist) {
-      bestDist = d;
-      best = p;
-    }
-  }
-  return { x: best.x, topY: best.y };
-}
-
-/**
  * PROJECT 7: Chaveiro de Imagem ou Vetor SVG
  * Imports a user SVG vector, raster image (PNG/JPG/WebP), or built-in preset,
  * generates a smooth rounded offset baseplate + raised 3D artwork relief, and
- * adds the chosen keyring attachment:
- * - 'arch': Real BVH-CSG negative curved tunnel (just like the Heart!)
- * - 'hole': Integrated rounded top ear with real punched through-hole + collar
+ * adds the chosen keyring attachment in any of the 8 cardinal directions:
+ * - 'arch': Real BVH-CSG negative curved tunnel carved into the baseplate edge
+ * - 'hole': Integrated rounded ear with real punched through-hole + collar
  * - 'loop': Sturdy protruding 3D torus arch ready for a keyring
  */
 function buildSvgKeychainModel(
@@ -1255,17 +1219,32 @@ function buildSvgKeychainModel(
   // 2. Compute smooth rounded unified offset baseplate via exact SDF dilation
   const sdfPixelMm = Math.max(0.28, Math.max(W, H) / 260);
   const baseShapes = dilateShapesWithSDF(graphicShapes, borderMm, sdfPixelMm);
-  const anchor = findTopSilhouetteAnchor(baseShapes.length > 0 ? baseShapes : graphicShapes);
+  const anchor = findDirectionalSilhouetteAnchor(
+    baseShapes.length > 0 ? baseShapes : graphicShapes,
+    config.keyringDirection ?? 'top'
+  );
 
   let archPlacement: NegativeArchPlacement | null = null;
   if (config.svgAttachMode === 'arch') {
-    const majorRadius = THREE.MathUtils.clamp(totalThick * 0.48, 2.1, 2.75);
-    const tubeRadius = THREE.MathUtils.clamp(totalThick * 0.2, 0.88, 1.15);
+    const baseBevelThick = bevel > 0.05 ? bevel * 0.72 : 0;
+    const baseTopY = baseThick + baseBevelThick;
+    const baseBottomY = -baseBevelThick;
+    const baseHeight = baseTopY - baseBottomY;
+    const tubeRadius = THREE.MathUtils.clamp(baseHeight * 0.26, 0.96, 1.12);
+    const majorRadius = THREE.MathUtils.clamp(baseHeight * 0.55, 2.08, 2.42);
+    const archCenterY = Math.max(
+      baseTopY + 0.05,
+      baseBottomY + majorRadius + tubeRadius + 0.45
+    );
+    const dirX = anchor.ux;
+    const dirZ = -anchor.uy;
+    // Offset +0.38mm outward so the top entrance sits centered inside the baseplate border rim
     archPlacement = {
-      center: [anchor.x, totalThick + 0.12, -anchor.topY - 0.12],
+      center: [anchor.x + dirX * 0.38, archCenterY, -anchor.y + dirZ * 0.38],
       majorRadius,
       tubeRadius,
-      rotation: [0, Math.PI * 0.5, 0],
+      rotation: [0, Math.atan2(anchor.uy, anchor.ux), 0],
+      exitExtensionMm: 2.5,
     };
   }
 
@@ -1305,7 +1284,7 @@ function buildSvgKeychainModel(
     reliefGeo.rotateX(-Math.PI * 0.5);
     reliefGeo.translate(0, baseThick - 0.15, 0);
     if (archPlacement) {
-      const carvedRelief = subtractNegativeKeyringArch(reliefGeo, archPlacement);
+      const carvedRelief = subtractVerticalKeyringEntrance(reliefGeo, archPlacement);
       reliefGeo.dispose();
       reliefGeo = carvedRelief;
     }
@@ -1316,15 +1295,16 @@ function buildSvgKeychainModel(
     group.add(reliefMesh);
   }
 
-  // 5. Attachment Modes: 'hole' (punched rounded top tab + collar) OR 'loop' (protruding 3D arch)
+  // 5. Attachment Modes: 'hole' (punched rounded tab + collar) OR 'loop' (protruding 3D arch)
   if (config.svgAttachMode === 'hole') {
-    const holeR = 2.5;
-    const outerTabR = 6.0;
-    const tabCenterY = anchor.topY + 2.9; // hole inner bottom sits at topY + 0.4 (100% open!)
+    const holeR = 2.45;
+    const outerTabR = 5.9;
+    const tabCenterX = anchor.protrudeX + anchor.cardinalUx * 2.85;
+    const tabCenterY = anchor.protrudeY + anchor.cardinalUy * 2.85;
 
     const tabShape = new THREE.Shape();
-    tabShape.absarc(anchor.x, tabCenterY, outerTabR, 0, Math.PI * 2, false);
-    addCircularHole(tabShape, anchor.x, tabCenterY, holeR);
+    tabShape.absarc(tabCenterX, tabCenterY, outerTabR, 0, Math.PI * 2, false);
+    addCircularHole(tabShape, tabCenterX, tabCenterY, holeR);
 
     const tabGeo = new THREE.ExtrudeGeometry(tabShape, {
       depth: baseThick,
@@ -1343,8 +1323,8 @@ function buildSvgKeychainModel(
 
     // Raised reinforcement collar around hole
     const collarShape = new THREE.Shape();
-    collarShape.absarc(anchor.x, tabCenterY, holeR + 1.85, 0, Math.PI * 2, false);
-    addCircularHole(collarShape, anchor.x, tabCenterY, holeR);
+    collarShape.absarc(tabCenterX, tabCenterY, holeR + 1.85, 0, Math.PI * 2, false);
+    addCircularHole(collarShape, tabCenterX, tabCenterY, holeR);
 
     const collarGeo = new THREE.ExtrudeGeometry(collarShape, {
       depth: reliefThick * 0.85,
@@ -1362,12 +1342,15 @@ function buildSvgKeychainModel(
     collarMesh.name = 'SvgKeychainHoleCollar';
     group.add(collarMesh);
   } else if (config.svgAttachMode === 'loop') {
-    // Sturdy protruding 3D arch/ring loop fused into the top edge
+    // Sturdy protruding 3D arch/ring loop fused into the chosen cardinal edge
     const loopMajorR = 4.6;
     const loopTubeR = Math.min(1.85, Math.max(1.3, baseThick * 0.44));
+    const loopCenterX = anchor.protrudeX + anchor.cardinalUx * (loopMajorR * 0.72);
+    const loopCenterY = anchor.protrudeY + anchor.cardinalUy * (loopMajorR * 0.72);
+
     const loopGeo = new THREE.TorusGeometry(loopMajorR, loopTubeR, 24, 48);
     loopGeo.rotateX(Math.PI * 0.5);
-    loopGeo.translate(anchor.x, baseThick * 0.52, -(anchor.topY + loopMajorR * 0.58));
+    loopGeo.translate(loopCenterX, baseThick * 0.52, -loopCenterY);
     geometries.push(loopGeo);
 
     const loopMesh = configurePrintableMesh(new THREE.Mesh(loopGeo, accentMat));
@@ -1419,6 +1402,11 @@ export function buildProjectModel(
   return {
     group,
     disposeGeometries: () => {
+      group.traverse((obj) => {
+        if (obj.userData?.clonedMaterial) {
+          obj.userData.clonedMaterial.dispose();
+        }
+      });
       for (const g of geometries) {
         g.dispose();
       }

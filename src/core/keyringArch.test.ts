@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from 'three';
 import {
+  findDirectionalSilhouetteAnchor,
   findFirstLetterTopAnchor,
   subtractNegativeKeyringArch,
 } from './keyringArch';
+import { KEYRING_DIRECTIONS, createDefaultConfig } from './projectDefaults';
 import { buildVectorTextShapes } from './vectorFont';
 import { computePrintMetrics, exportGroupToBinarySTL } from './stlExporter';
+import { buildProjectModel } from '../three/modelBuilder';
 
 test('findFirstLetterTopAnchor lands on a solid top stroke with safe wall margin and selects 1st or 2nd letter as best fits', () => {
   for (const name of [
@@ -45,16 +48,12 @@ test('findFirstLetterTopAnchor lands on a solid top stroke with safe wall margin
       anchor.recommendedMajorRadius >= 2.1 && anchor.recommendedMajorRadius <= 2.75,
       `${name} major radius ${anchor.recommendedMajorRadius} must be in safe functional range [2.1, 2.75]`
     );
-    // Ensure safe horizontal wall margin around hole: solidWidth >= 2 * tubeRadius + 1.0mm
     assert.ok(
       anchor.solidWidth >= anchor.recommendedTubeRadius * 2 + 1.0,
       `${name} (picked letter ${anchor.letterIndex + 1}) solidWidth ${anchor.solidWidth.toFixed(2)}mm must leave safe wall margin around hole diameter ${(anchor.recommendedTubeRadius * 2).toFixed(2)}mm`
     );
   }
 
-  // Verify that when the 2nd letter offers a significantly wider top stroke (like 'T' in 'ATELIÊ' vs tapered 'A'),
-  // it automatically selects the 2nd letter; whereas when the 1st letter is wider (like 'R' in 'RAFAEL' vs 'A'),
-  // it selects the 1st letter.
   const builtAtelie = buildVectorTextShapes('ATELIÊ', 'serif', 65, 20, -0.024, true, true);
   const atelieAnchor = findFirstLetterTopAnchor(
     builtAtelie.firstLetterShapes,
@@ -115,4 +114,40 @@ test('subtractNegativeKeyringArch carves a real curved tunnel reducing volume an
 
   box.dispose();
   carved.dispose();
+});
+
+test('findDirectionalSilhouetteAnchor resolves all 8 cardinal directions accurately and svg-keychain carves negative arch in all 8 directions', () => {
+  const disk = new THREE.Shape();
+  disk.absarc(0, 0, 22, 0, Math.PI * 2, false);
+
+  for (const dir of KEYRING_DIRECTIONS) {
+    const anchor = findDirectionalSilhouetteAnchor([disk], dir.id);
+    const dot = anchor.x * anchor.cardinalUx + anchor.y * anchor.cardinalUy;
+    assert.ok(
+      dot > 18,
+      `Direction ${dir.id} anchor (${anchor.x.toFixed(1)}, ${anchor.y.toFixed(1)}) should project strongly along (${anchor.cardinalUx.toFixed(2)}, ${anchor.cardinalUy.toFixed(2)})`
+    );
+  }
+
+  const matA = new THREE.MeshStandardMaterial();
+  const matB = new THREE.MeshStandardMaterial();
+
+  for (const dir of KEYRING_DIRECTIONS) {
+    const cfg = createDefaultConfig('svg-keychain');
+    cfg.svgAttachMode = 'arch';
+    cfg.keyringDirection = dir.id;
+    const built = buildProjectModel(cfg, matA, matB);
+    const baseMesh = built.group.getObjectByName('SvgKeychainBase') as THREE.Mesh;
+    assert.ok(baseMesh, `SvgKeychainBase must exist for direction ${dir.id}`);
+    const triCount = baseMesh.geometry.getAttribute('position').count / 3;
+    // Uncarved paw baseplate has ~1452 triangles; carved negative arch adds ~500+ tunnel triangles
+    assert.ok(
+      triCount > 1750,
+      `svg-keychain negative arch at ${dir.id} must carve full 3D tunnel into baseplate (got ${triCount} triangles)`
+    );
+    built.disposeGeometries();
+  }
+
+  matA.dispose();
+  matB.dispose();
 });
