@@ -638,6 +638,28 @@ export default function App() {
     return textValidation.normalized;
   }, [config.template, config.svgSourceType, config.svgFileName, config.svgPresetId, textValidation.normalized]);
 
+  const handleDownload3MF = useCallback(() => {
+    if (!isModelValid) return;
+    const buffer = viewportRef.current?.export3MF(
+      `${config.template}_${exportSlugLabel}`
+    );
+    if (!buffer) return;
+    const filename = buildExportFilename(
+      config.template,
+      exportSlugLabel,
+      '3mf'
+    );
+    triggerBlobDownload(
+      new Blob([buffer], {
+        type: 'application/vnd.ms-package.3dmanufacturing-3dmodel+xml',
+      }),
+      filename
+    );
+    setExportNotice(
+      `Arquivo ${filename} exportado em 3MF com cores, peças e propriedades do modelo.`
+    );
+  }, [config.template, exportSlugLabel, isModelValid]);
+
   const handleDownloadSTL = useCallback(() => {
     if (!isModelValid) return;
     const buffer = viewportRef.current?.exportSTL();
@@ -746,7 +768,9 @@ export default function App() {
         onOpenPreload={() => setShowPreload(true)}
         onOpenSaveModal={() => setShowSaveModal(true)}
         onOpenSavedProjects={() => setShowSavedProjectsModal(true)}
+        onDownload3MF={handleDownload3MF}
         onDownloadSTL={handleDownloadSTL}
+        onDownloadOBJ={handleDownloadOBJ}
         canExport={isModelValid}
       />
 
@@ -825,6 +849,7 @@ export default function App() {
         onChangeDimensionAxis={handleDimensionAxisChange}
         onSelectCamera={handleSelectCamera}
         onResetDefaults={handleResetDefaults}
+        onDownload3MF={handleDownload3MF}
         onDownloadSTL={handleDownloadSTL}
         onDownloadOBJ={handleDownloadOBJ}
         canExport={isModelValid}

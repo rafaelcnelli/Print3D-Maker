@@ -278,7 +278,7 @@ export function formatPrintDuration(minutes: number): string {
 export function buildExportFilename(
   template: TemplateId,
   text: string,
-  ext: 'stl' | 'obj'
+  ext: 'stl' | 'obj' | '3mf'
 ): string {
   const slugPrefix: Record<TemplateId, string> = {
     'heart-name': 'coracao-nome',
@@ -300,3 +300,11 @@ export function buildExportFilename(
 
   return `print3d-maker-${slugPrefix[template]}-${cleanText}.${ext}`;
 }
+
+export {
+  build3MFModelXml,
+  exportGroupTo3MF,
+  extractSlicerMeshParts,
+  type ThreeMfExportOptions,
+} from './threeMfExporter';
+

@@ -77,7 +77,7 @@ export function PreloadScreen({
           Print3D Maker
         </h1>
         <p className="mt-1.5 text-xs sm:text-sm text-[#5A6375] dark:text-[#94A3B8] max-w-sm">
-          Criador de projetos personalizados para impressão 3D com exportação direta em STL e OBJ
+          Criador de projetos personalizados para impressão 3D com exportação direta em 3MF, STL e OBJ
         </p>
 
         {/* Progress Bar & Status Step */}
@@ -112,15 +112,15 @@ export function PreloadScreen({
         </div>
 
         {/* Primary Entry & PWA Install Actions */}
-        <div className="mt-7 w-full flex flex-col sm:flex-row items-center justify-center gap-2.5">
+        <div className="mt-7 w-full flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
           <button
             type="button"
             data-testid="preload-enter-btn"
             onClick={onEnterStudio}
-            className="w-full sm:w-auto flex-1 inline-flex items-center justify-center gap-2 h-10 px-5 rounded-xl bg-[#D93848] hover:bg-[#BE2B3A] active:bg-[#A62331] text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+            className="w-full sm:w-auto sm:flex-1 shrink-0 inline-flex items-center justify-center gap-2.5 h-12 sm:h-11 px-5 rounded-xl bg-[#D93848] hover:bg-[#BE2B3A] active:bg-[#A62331] text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
           >
             <span>Entrar no Estúdio 3D</span>
-            <ArrowRight className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <ArrowRight className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" aria-hidden="true" />
           </button>
 
           {!isInstalled ? (
@@ -128,16 +128,16 @@ export function PreloadScreen({
               type="button"
               data-testid="preload-pwa-install-btn"
               onClick={handleInstallAction}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-[#D5DCE6] dark:border-[#2C3649] bg-white dark:bg-[#1A2130] hover:bg-[#F1F5F9] dark:hover:bg-[#242E42] text-[#171A21] dark:text-[#E2E8F0] text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+              className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2.5 h-12 sm:h-11 px-5 rounded-xl border border-[#D5DCE6] dark:border-[#2C3649] bg-white dark:bg-[#1A2130] hover:bg-[#F1F5F9] dark:hover:bg-[#242E42] text-[#171A21] dark:text-[#E2E8F0] text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
             >
               <Download
-                className="w-4 h-4 text-[#D93848] dark:text-[#E84C5C] shrink-0"
+                className="w-5 h-5 sm:w-4 sm:h-4 text-[#D93848] dark:text-[#E84C5C] shrink-0"
                 aria-hidden="true"
               />
               <span>{isInstallable ? 'Instalar App' : 'Instalar PWA'}</span>
             </button>
           ) : (
-            <div className="inline-flex items-center gap-1.5 h-10 px-3.5 text-xs font-medium text-[#159A6E] dark:text-[#34D399]">
+            <div className="inline-flex items-center justify-center gap-1.5 h-12 sm:h-11 px-4 text-sm sm:text-xs font-medium text-[#159A6E] dark:text-[#34D399]">
               <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />
               <span>App instalado</span>
             </div>

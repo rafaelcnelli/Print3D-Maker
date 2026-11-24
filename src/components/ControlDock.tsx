@@ -5,6 +5,7 @@ import {
   Download,
   FileCode2,
   ImageUp,
+  Layers,
   Lock,
   LockOpen,
   Redo2,
@@ -95,7 +96,7 @@ function KeyringAttachmentAndCardinalControl({
               data-testid={`svg-attach-${mode.id}`}
               onClick={() => onSelectMode(mode.id)}
               aria-pressed={attachMode === mode.id}
-              className={`flex-1 h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              className={`flex-1 h-9 sm:h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                 attachMode === mode.id
                   ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                   : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -112,17 +113,17 @@ function KeyringAttachmentAndCardinalControl({
         data-testid="keyring-cardinal-pad"
         role="group"
         aria-label="Escolher direção do encaixe da argola (8 cardeais)"
-        className="grid grid-cols-3 gap-0.5 p-1 rounded-xl bg-[#EFF2F7] dark:bg-[#0E121A] border border-[#D1D8E3]/80 dark:border-[#252F42] shrink-0"
+        className="grid grid-cols-3 gap-1 sm:gap-0.5 p-1.5 sm:p-1 rounded-xl bg-[#EFF2F7] dark:bg-[#0E121A] border border-[#D1D8E3]/80 dark:border-[#252F42] shrink-0"
       >
         {CARDINAL_GRID_CELLS.map((cellDir, idx) => {
           if (!cellDir) {
             return (
               <div
                 key={`center-${idx}`}
-                className="w-5 h-5 flex items-center justify-center"
+                className="w-8 h-8 sm:w-5 sm:h-5 flex items-center justify-center"
                 aria-hidden="true"
               >
-                <span className="w-2 h-2 rounded-full bg-[#8A94A6]/60 dark:bg-[#64748B]/70 ring-2 ring-[#D93848]/25" />
+                <span className="w-2.5 h-2.5 sm:w-2 sm:h-2 rounded-full bg-[#8A94A6]/60 dark:bg-[#64748B]/70 ring-2 ring-[#D93848]/25" />
               </div>
             );
           }
@@ -137,7 +138,7 @@ function KeyringAttachmentAndCardinalControl({
               aria-label={`Posição ${meta.label}`}
               aria-pressed={active}
               onClick={() => onSelectDirection(cellDir)}
-              className={`w-5 h-5 rounded-md flex items-center justify-center text-[11px] font-bold leading-none transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+              className={`w-8 h-8 sm:w-5 sm:h-5 rounded-lg sm:rounded-md flex items-center justify-center text-sm sm:text-[11px] font-bold leading-none transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
                 active
                   ? 'bg-[#D93848] text-white shadow-xs scale-105'
                   : 'bg-white/80 dark:bg-[#192130] text-[#4E5869] dark:text-[#94A3B8] hover:bg-white dark:hover:bg-[#253046] hover:text-[#171A21] dark:hover:text-[#F8FAFC]'
@@ -173,6 +174,7 @@ interface ControlDockProps {
   onChangeDimensionAxis: (axis: DimensionAxis, value: number) => void;
   onSelectCamera: (preset: CameraPresetId) => void;
   onResetDefaults: () => void;
+  onDownload3MF: () => void;
   onDownloadSTL: () => void;
   onDownloadOBJ: () => void;
   canExport: boolean;
@@ -199,6 +201,7 @@ export function ControlDock({
   onChangeDimensionAxis,
   onSelectCamera,
   onResetDefaults,
+  onDownload3MF,
   onDownloadSTL,
   onDownloadOBJ,
   canExport,
@@ -310,7 +313,7 @@ export function ControlDock({
       className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 w-[min(960px,95vw)] pointer-events-none flex flex-col items-center"
     >
       {/* Attached Undo / Collapse / Redo Handle Bar */}
-      <div className="pointer-events-auto inline-flex items-stretch rounded-t-lg border border-b-0 border-[#D5DCE6] dark:border-[#273043] bg-[#FFFFFF]/96 dark:bg-[#161B26]/96 shadow-[0_-4px_14px_rgba(15,23,42,0.05)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] overflow-hidden transition-colors">
+      <div className="pointer-events-auto inline-flex items-stretch rounded-t-xl sm:rounded-t-lg border border-b-0 border-[#D5DCE6] dark:border-[#273043] bg-[#FFFFFF]/96 dark:bg-[#161B26]/96 shadow-[0_-4px_14px_rgba(15,23,42,0.05)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] overflow-hidden transition-colors">
         <button
           type="button"
           data-testid="undo-btn"
@@ -318,9 +321,9 @@ export function ControlDock({
           disabled={!canUndo}
           aria-label="Desfazer última ação (Ctrl+Z)"
           title="Desfazer (Ctrl+Z)"
-          className="inline-flex items-center justify-center w-8 h-8 border-r border-[#E2E8F0] dark:border-[#273043] text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
+          className="inline-flex items-center justify-center w-11 h-10 sm:w-8 sm:h-8 border-r border-[#E2E8F0] dark:border-[#273043] text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
         >
-          <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+          <Undo2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
         </button>
 
         <button
@@ -328,16 +331,16 @@ export function ControlDock({
           onClick={onToggleCollapse}
           aria-expanded={!collapsed}
           aria-controls="studio-dock-panel"
-          className="inline-flex items-center gap-1.5 h-8 px-3.5 text-xs font-medium text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
+          className="inline-flex items-center gap-1.5 h-10 sm:h-8 px-4 sm:px-3.5 text-sm sm:text-xs font-semibold sm:font-medium text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
         >
           {collapsed ? (
             <>
-              <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+              <ChevronUp className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
               <span>Personalizar projeto</span>
             </>
           ) : (
             <>
-              <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+              <ChevronDown className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
               <span>Ocultar controles</span>
             </>
           )}
@@ -350,9 +353,9 @@ export function ControlDock({
           disabled={!canRedo}
           aria-label="Refazer ação (Ctrl+Y)"
           title="Refazer (Ctrl+Y)"
-          className="inline-flex items-center justify-center w-8 h-8 border-l border-[#E2E8F0] dark:border-[#273043] text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
+          className="inline-flex items-center justify-center w-11 h-10 sm:w-8 sm:h-8 border-l border-[#E2E8F0] dark:border-[#273043] text-[#374151] dark:text-[#CBD5E1] hover:bg-[#F1F5F9] dark:hover:bg-[#1F2738] hover:text-[#171A21] dark:hover:text-[#F8FAFC] disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D93848]"
         >
-          <Redo2 className="w-3.5 h-3.5" aria-hidden="true" />
+          <Redo2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
         </button>
       </div>
 
@@ -378,7 +381,7 @@ export function ControlDock({
                   type="button"
                   data-testid="upload-svg-image-btn"
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-2 h-9 px-3.5 rounded-lg bg-[#171A21] hover:bg-[#2B303C] dark:bg-[#263042] dark:hover:bg-[#334155] text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+                  className="inline-flex items-center gap-2 h-10 sm:h-9 px-3.5 rounded-lg bg-[#171A21] hover:bg-[#2B303C] dark:bg-[#263042] dark:hover:bg-[#334155] text-white text-xs sm:text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
                 >
                   <ImageUp className="w-4 h-4 shrink-0" aria-hidden="true" />
                   <span>Importar SVG / Imagem</span>
@@ -393,7 +396,7 @@ export function ControlDock({
                     type="button"
                     data-testid="edit-vectorize-btn"
                     onClick={onReopenVectorizeModal}
-                    className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-[#F7F9FC] dark:bg-[#1E2534] hover:bg-[#EDF1F7] dark:hover:bg-[#273145] text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 h-9 sm:h-8 px-3 sm:px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-[#F7F9FC] dark:bg-[#1E2534] hover:bg-[#EDF1F7] dark:hover:bg-[#273145] text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
                     <span>Editar vetor</span>
@@ -458,7 +461,7 @@ export function ControlDock({
                     type="button"
                     onClick={() => onSelectCamera(btn.id)}
                     aria-pressed={active}
-                    className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                    className={`flex-1 sm:flex-none h-9 sm:h-7 px-2 sm:px-2.5 rounded-md text-[11px] sm:text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
                       active
                         ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                         : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -488,7 +491,7 @@ export function ControlDock({
           {/* Row 2: Tab Strip + Active Parameter Controls */}
           <div className="px-4 py-2.5 bg-[#FAFBFD] dark:bg-[#111620] flex flex-col gap-3 transition-colors">
             <div className="flex items-center justify-between gap-4 border-b border-[#E7EBF2] dark:border-[#262E3E] pb-2">
-              <div role="tablist" aria-label="Categorias de ajustes" className="flex items-center gap-4">
+              <div role="tablist" aria-label="Categorias de ajustes" className="flex items-center gap-3 sm:gap-4 overflow-x-auto no-scrollbar">
                 {(
                   [
                     { id: 'shape', label: 'Texto e forma' },
@@ -504,7 +507,7 @@ export function ControlDock({
                       role="tab"
                       aria-selected={selected}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`text-xs font-semibold pb-1 -mb-[9px] border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                      className={`text-xs sm:text-xs font-semibold py-2 sm:py-0 sm:pb-1 -mb-[9px] border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
                         selected
                           ? 'text-[#171A21] dark:text-[#F8FAFC] border-[#D93848] dark:border-[#E84C5C]'
                           : 'text-[#616B7D] dark:text-[#94A3B8] border-transparent hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -538,7 +541,7 @@ export function ControlDock({
                           type="button"
                           onClick={() => onUpdateConfig({ fontStyle: f.id })}
                           aria-pressed={config.fontStyle === f.id}
-                          className={`flex-1 h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                          className={`flex-1 h-9 sm:h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                             config.fontStyle === f.id
                               ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                               : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -635,7 +638,7 @@ export function ControlDock({
                             data-testid={`box-layout-${mode.id}`}
                             onClick={() => onUpdateConfig({ boxLetterLayout: mode.id })}
                             aria-pressed={config.boxLetterLayout === mode.id}
-                            className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                            className={`flex-1 h-9 sm:h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                               config.boxLetterLayout === mode.id
                                 ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                                 : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -711,7 +714,7 @@ export function ControlDock({
                                 })
                               }
                               aria-pressed={active}
-                              className={`flex-1 h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                              className={`flex-1 h-9 sm:h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                                 active
                                   ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                                   : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -824,7 +827,7 @@ export function ControlDock({
                             type="button"
                             onClick={() => onUpdateConfig({ heartMode: mode.id })}
                             aria-pressed={config.heartMode === mode.id}
-                            className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                            className={`flex-1 h-9 sm:h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                               config.heartMode === mode.id
                                 ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                                 : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -882,7 +885,7 @@ export function ControlDock({
                             type="button"
                             onClick={() => onUpdateConfig({ signBaseStyle: st.id })}
                             aria-pressed={config.signBaseStyle === st.id}
-                            className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                            className={`flex-1 h-9 sm:h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                               config.signBaseStyle === st.id
                                 ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                                 : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -932,7 +935,7 @@ export function ControlDock({
                               type="button"
                               onClick={() => onUpdateConfig({ keychainShape: sh.id })}
                               aria-pressed={config.keychainShape === sh.id}
-                              className={`flex-1 h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                              className={`flex-1 h-9 sm:h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                                 config.keychainShape === sh.id
                                   ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                                   : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
@@ -1037,7 +1040,7 @@ export function ControlDock({
                     data-testid="dock-toggle-lock-proportions"
                     onClick={onToggleLockProportions}
                     aria-pressed={lockProportions}
-                    className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-xs font-semibold transition-colors cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 h-9 sm:h-7 px-3 sm:px-2.5 rounded-lg sm:rounded-md border text-xs font-semibold transition-colors cursor-pointer ${
                       lockProportions
                         ? 'border-[#0284C7]/40 dark:border-[#38BDF8]/40 bg-[#F0F9FF] dark:bg-[#0C2D48]/65 text-[#0369A1] dark:text-[#7DD3FC]'
                         : 'border-[#CBD5E1] dark:border-[#323E54] bg-white dark:bg-[#1E2534] text-[#475569] dark:text-[#CBD5E1] hover:text-[#171A21] dark:hover:text-[#F8FAFC]'
@@ -1177,7 +1180,7 @@ export function ControlDock({
                             aria-label={`Cor principal ${c.name}`}
                             aria-pressed={selected}
                             title={c.name}
-                            className={`w-6 h-6 rounded-full border cursor-pointer transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                            className={`w-7 h-7 sm:w-6 sm:h-6 rounded-full border cursor-pointer transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
                               selected
                                 ? 'ring-2 ring-offset-2 ring-[#171A21] border-[#171A21] dark:ring-offset-[#111620] dark:ring-[#F1F5F9] dark:border-[#F1F5F9]'
                                 : 'border-[#CBD2DC] dark:border-[#3B475C]'
@@ -1206,7 +1209,7 @@ export function ControlDock({
                             aria-label={`Cor secundária ${c.name}`}
                             aria-pressed={selected}
                             title={c.name}
-                            className={`w-5 h-5 rounded-full border cursor-pointer transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                            className={`w-6 h-6 sm:w-5 sm:h-5 rounded-full border cursor-pointer transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
                               selected
                                 ? 'ring-2 ring-offset-1 ring-[#171A21] border-[#171A21] dark:ring-offset-[#111620] dark:ring-[#F1F5F9] dark:border-[#F1F5F9]'
                                 : 'border-[#CBD2DC] dark:border-[#3B475C]'
@@ -1227,7 +1230,7 @@ export function ControlDock({
                     onChange={(e) =>
                       onUpdateConfig({ finish: e.target.value as ProjectConfig['finish'] })
                     }
-                    className="h-8 px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-white dark:bg-[#1E2534] text-xs font-medium text-[#171A21] dark:text-[#E2E8F0] cursor-pointer focus:outline-none focus:border-[#171A21] dark:focus:border-[#64748B]"
+                    className="h-10 sm:h-8 px-3 sm:px-2.5 rounded-lg border border-[#D1D8E3] dark:border-[#323E54] bg-white dark:bg-[#1E2534] text-sm sm:text-xs font-medium text-[#171A21] dark:text-[#E2E8F0] cursor-pointer focus:outline-none focus:border-[#171A21] dark:focus:border-[#64748B]"
                   >
                     {FILAMENT_FINISHES.map((fin) => (
                       <option key={fin.id} value={fin.id}>
@@ -1238,11 +1241,24 @@ export function ControlDock({
 
                   <button
                     type="button"
+                    data-testid="dock-download-3mf"
+                    onClick={onDownload3MF}
+                    disabled={!canExport}
+                    title="Exportar 3MF (preserva cores, peças e propriedades)"
+                    className="inline-flex items-center gap-1.5 h-10 sm:h-8 px-3.5 sm:px-3 rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] disabled:bg-[#CBD2DC] dark:disabled:bg-[#334155] text-white text-sm sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Layers className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
+                    <span>3MF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="dock-download-stl"
                     onClick={onDownloadSTL}
                     disabled={!canExport}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#171A21] hover:bg-[#2B303C] dark:bg-[#F1F5F9] dark:hover:bg-white disabled:bg-[#CBD2DC] dark:disabled:bg-[#334155] text-white dark:text-[#0F172A] text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 h-10 sm:h-8 px-3.5 sm:px-3 rounded-lg bg-[#171A21] hover:bg-[#2B303C] dark:bg-[#F1F5F9] dark:hover:bg-white disabled:bg-[#CBD2DC] dark:disabled:bg-[#334155] text-white dark:text-[#0F172A] text-sm sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                    <Download className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
                     <span>STL</span>
                   </button>
 
@@ -1250,9 +1266,9 @@ export function ControlDock({
                     type="button"
                     onClick={onDownloadOBJ}
                     disabled={!canExport}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[#CBD2DC] dark:border-[#323E54] bg-white dark:bg-[#1E2534] hover:bg-[#F3F5F9] dark:hover:bg-[#273044] disabled:opacity-50 text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 h-10 sm:h-8 px-3.5 sm:px-3 rounded-lg border border-[#CBD2DC] dark:border-[#323E54] bg-white dark:bg-[#1E2534] hover:bg-[#F3F5F9] dark:hover:bg-[#273044] disabled:opacity-50 text-[#171A21] dark:text-[#E2E8F0] text-sm sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <FileCode2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    <FileCode2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
                     <span>OBJ</span>
                   </button>
 
@@ -1261,9 +1277,9 @@ export function ControlDock({
                     onClick={onResetDefaults}
                     aria-label="Restaurar padrões do projeto"
                     title="Restaurar padrões"
-                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg border border-[#CBD2DC] dark:border-[#323E54] bg-white dark:bg-[#1E2534] hover:bg-[#F3F5F9] dark:hover:bg-[#273044] text-[#4D5666] dark:text-[#CBD5E1] hover:text-[#171A21] dark:hover:text-[#F8FAFC] text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 h-10 sm:h-8 px-3 sm:px-2.5 rounded-lg border border-[#CBD2DC] dark:border-[#323E54] bg-white dark:bg-[#1E2534] hover:bg-[#F3F5F9] dark:hover:bg-[#273044] text-[#4D5666] dark:text-[#CBD5E1] hover:text-[#171A21] dark:hover:text-[#F8FAFC] text-sm sm:text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                    <RotateCcw className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
                     <span>Resetar</span>
                   </button>
                 </div>

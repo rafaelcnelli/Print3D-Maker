@@ -148,7 +148,7 @@ export function CostCalculator({
         aria-haspopup="dialog"
         aria-label={`Calculadora de custos: ${formattedTotal}`}
         title="Expandir ou recolher calculadora de custos"
-        className={`inline-flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+        className={`inline-flex items-center gap-1 sm:gap-1.5 h-10 sm:h-9 px-2 sm:px-3 rounded-xl sm:rounded-lg border text-xs font-medium transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
           open
             ? 'border-[#D93848] dark:border-[#E84C5C] bg-[#FDF2F3] dark:bg-[#2B171D] text-[#171A21] dark:text-[#F8FAFC]'
             : 'border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0]'
@@ -206,7 +206,7 @@ export function CostCalculator({
               onClick={() => setOpen(false)}
               aria-label="Recolher calculadora de custos"
               title="Recolher"
-              className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#64748B] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F8FAFC] hover:bg-[#EFF2F7] dark:hover:bg-[#232B3B] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+              className="inline-flex items-center justify-center w-9 h-9 sm:w-7 sm:h-7 rounded-lg sm:rounded-md text-[#64748B] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F8FAFC] hover:bg-[#EFF2F7] dark:hover:bg-[#232B3B] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
             >
               <ChevronUp className="w-4 h-4" aria-hidden="true" />
             </button>
@@ -255,7 +255,7 @@ export function CostCalculator({
                     data-testid={`cost-infill-preset-${pct}`}
                     aria-pressed={active}
                     onClick={() => handleInfillChange(pct)}
-                    className={`flex-1 h-7 rounded-md font-mono tabular-nums text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    className={`flex-1 h-9 sm:h-7 rounded-md font-mono tabular-nums text-xs sm:text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                       active
                         ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
                         : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'

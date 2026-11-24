@@ -109,9 +109,9 @@ export function SavedProjectsModal({
             data-testid="close-saved-projects-modal"
             onClick={onClose}
             aria-label="Fechar projetos salvos"
-            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#5A6375] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F8FAFC] hover:bg-[#EFF2F7] dark:hover:bg-[#1F2738] transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-xl sm:rounded-lg text-[#5A6375] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F8FAFC] hover:bg-[#EFF2F7] dark:hover:bg-[#1F2738] transition-colors cursor-pointer"
           >
-            <X className="w-4 h-4" aria-hidden="true" />
+            <X className="w-5 h-5 sm:w-4 sm:h-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -139,9 +139,9 @@ export function SavedProjectsModal({
               onClose();
               onOpenSaveCurrent();
             }}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] text-white text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 h-11 sm:h-9 px-3.5 sm:px-3 rounded-xl sm:rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] text-white text-sm sm:text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
           >
-            <Save className="w-3.5 h-3.5" aria-hidden="true" />
+            <Save className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
             <span>Salvar projeto atual</span>
           </button>
         </div>
@@ -224,7 +224,7 @@ export function SavedProjectsModal({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-1.5 shrink-0">
+                    <div className="flex items-center justify-end gap-2 sm:gap-1.5 shrink-0">
                       {isConfirmingDelete ? (
                         <>
                           <button
@@ -234,14 +234,14 @@ export function SavedProjectsModal({
                               onDeleteProject(project.id);
                               setConfirmDeleteId(null);
                             }}
-                            className="h-8 px-2.5 rounded-lg bg-[#DC2626] hover:bg-[#B91C1C] text-white text-xs font-semibold transition-colors cursor-pointer"
+                            className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 rounded-xl sm:rounded-lg bg-[#DC2626] hover:bg-[#B91C1C] text-white text-sm sm:text-xs font-semibold transition-colors cursor-pointer"
                           >
                             Confirmar
                           </button>
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteId(null)}
-                            className="h-8 px-2 rounded-lg border border-[#D1D8E3] dark:border-[#2C3649] text-xs font-medium text-[#5A6375] dark:text-[#94A3B8] hover:bg-[#EFF2F7] dark:hover:bg-[#1F2738] transition-colors cursor-pointer"
+                            className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2 rounded-xl sm:rounded-lg border border-[#D1D8E3] dark:border-[#2C3649] text-sm sm:text-xs font-medium text-[#5A6375] dark:text-[#94A3B8] hover:bg-[#EFF2F7] dark:hover:bg-[#1F2738] transition-colors cursor-pointer"
                           >
                             Cancelar
                           </button>
@@ -252,9 +252,9 @@ export function SavedProjectsModal({
                             type="button"
                             data-testid="load-saved-project-btn"
                             onClick={() => onLoadProject(project)}
-                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#171A21] hover:bg-[#2B303C] dark:bg-[#263042] dark:hover:bg-[#334155] text-white text-xs font-semibold transition-colors cursor-pointer"
+                            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 h-10 sm:h-8 px-4 sm:px-3 rounded-xl sm:rounded-lg bg-[#171A21] hover:bg-[#2B303C] dark:bg-[#263042] dark:hover:bg-[#334155] text-white text-sm sm:text-xs font-semibold transition-colors cursor-pointer"
                           >
-                            <FolderOpen className="w-3.5 h-3.5" aria-hidden="true" />
+                            <FolderOpen className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
                             <span>Abrir</span>
                           </button>
                           <button
@@ -263,9 +263,9 @@ export function SavedProjectsModal({
                             onClick={() => setConfirmDeleteId(project.id)}
                             aria-label={`Excluir projeto ${project.name}`}
                             title="Excluir projeto"
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#D1D8E3] dark:border-[#2C3649] bg-white dark:bg-[#1A2130] hover:bg-[#FEE2E2] dark:hover:bg-[#3B181E] hover:border-[#FCA5A5] dark:hover:border-[#EF4444]/45 text-[#64748B] dark:text-[#94A3B8] hover:text-[#DC2626] dark:hover:text-[#F87171] transition-colors cursor-pointer"
+                            className="inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-xl sm:rounded-lg border border-[#D1D8E3] dark:border-[#2C3649] bg-white dark:bg-[#1A2130] hover:bg-[#FEE2E2] dark:hover:bg-[#3B181E] hover:border-[#FCA5A5] dark:hover:border-[#EF4444]/45 text-[#64748B] dark:text-[#94A3B8] hover:text-[#DC2626] dark:hover:text-[#F87171] transition-colors cursor-pointer"
                           >
-                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            <Trash2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
                           </button>
                         </>
                       )}

@@ -17,6 +17,7 @@ import {
 } from '../core/dimensionMath';
 import {
   computePrintMetrics,
+  exportGroupTo3MF,
   exportGroupToBinarySTL,
   exportGroupToOBJ,
 } from '../core/stlExporter';
@@ -44,6 +45,7 @@ import type {
 export interface Viewport3DHandle {
   exportSTL: () => ArrayBuffer | null;
   exportOBJ: (objectName: string) => string | null;
+  export3MF: (objectName: string) => ArrayBuffer | null;
 }
 
 interface Viewport3DProps {
@@ -348,6 +350,15 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
           const model = activeModelRef.current?.group;
           if (!model) return null;
           return exportGroupToOBJ(model, objectName);
+        },
+        export3MF: (objectName: string) => {
+          const model = activeModelRef.current?.group;
+          if (!model) return null;
+          return exportGroupTo3MF(model, {
+            objectName,
+            config: configRef.current,
+            buildPlate: buildPlatePropRef.current,
+          });
         },
       }),
       []

@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Box,
   Check,
+  ChevronDown,
   Download,
+  FileCode2,
   FolderOpen,
+  Layers,
   Menu,
   MonitorSmartphone,
   Moon,
@@ -41,7 +45,9 @@ interface TopBarProps {
   onOpenPreload: () => void;
   onOpenSaveModal: () => void;
   onOpenSavedProjects: () => void;
+  onDownload3MF: () => void;
   onDownloadSTL: () => void;
+  onDownloadOBJ: () => void;
   canExport: boolean;
 }
 
@@ -62,11 +68,38 @@ export function TopBar({
   onOpenPreload,
   onOpenSaveModal,
   onOpenSavedProjects,
+  onDownload3MF,
   onDownloadSTL,
+  onDownloadOBJ,
   canExport,
 }: TopBarProps) {
   const isDark = theme === 'dark';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const downloadMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!downloadMenuOpen) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (
+        downloadMenuRef.current &&
+        !downloadMenuRef.current.contains(e.target as Node)
+      ) {
+        setDownloadMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDownloadMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [downloadMenuOpen]);
 
   // Close mobile sidebar drawer on Escape or when resizing to desktop (lg >= 1024px)
   useEffect(() => {
@@ -91,7 +124,7 @@ export function TopBar({
 
   return (
     <>
-      <header className="fixed top-0 inset-x-0 z-20 h-14 bg-[#FFFFFF]/95 dark:bg-[#131720]/96 border-b border-[#DCE1EA] dark:border-[#262E3E] px-2.5 sm:px-5 flex items-center justify-between gap-1.5 sm:gap-3 transition-colors">
+      <header className="fixed top-0 inset-x-0 z-20 h-15 sm:h-14 bg-[#FFFFFF]/95 dark:bg-[#131720]/96 border-b border-[#DCE1EA] dark:border-[#262E3E] px-2 sm:px-5 flex items-center justify-between gap-1 sm:gap-3 transition-colors">
         {/* Zone 1: Mobile Hamburger Button (< lg) + Brand logo + display wordmark */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
           <button
@@ -104,12 +137,12 @@ export function TopBar({
               mobileMenuOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'
             }
             title="Menu de projetos e ferramentas"
-            className="lg:hidden inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+            className="lg:hidden inline-flex items-center justify-center w-10 h-10 sm:w-9 sm:h-9 rounded-xl sm:rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
           >
             {mobileMenuOpen ? (
-              <X className="w-4 h-4 text-[#D93848]" aria-hidden="true" />
+              <X className="w-5 h-5 sm:w-4 sm:h-4 text-[#D93848]" aria-hidden="true" />
             ) : (
-              <Menu className="w-4 h-4" aria-hidden="true" />
+              <Menu className="w-5 h-5 sm:w-4 sm:h-4" aria-hidden="true" />
             )}
           </button>
 
@@ -181,7 +214,7 @@ export function TopBar({
             onClick={onOpenSaveModal}
             aria-label="Salvar projeto"
             title="Salvar projeto"
-            className="inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+            className="inline-flex items-center justify-center w-10 h-10 sm:w-9 sm:h-9 rounded-xl sm:rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
           >
             <Save className="w-4 h-4 text-[#D93848] dark:text-[#E84C5C]" aria-hidden="true" />
           </button>
@@ -192,7 +225,7 @@ export function TopBar({
             onClick={onOpenSavedProjects}
             aria-label={`Projetos salvos (${savedProjectsCount})`}
             title="Projetos salvos"
-            className="relative inline-flex items-center gap-1.5 h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
+            className="relative inline-flex items-center justify-center gap-1.5 h-10 sm:h-9 px-2 sm:px-2.5 rounded-xl sm:rounded-lg border border-[#D5DCE6] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1C2332] hover:bg-[#EDF1F7] dark:hover:bg-[#252F42] text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848]"
           >
             <FolderOpen className="w-4 h-4 text-[#D93848] dark:text-[#E84C5C] shrink-0" aria-hidden="true" />
             <span className="hidden 2xl:inline">Projetos salvos</span>
@@ -241,16 +274,118 @@ export function TopBar({
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={onDownloadSTL}
-            disabled={!canExport}
-            className="inline-flex items-center gap-1 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3.5 rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] active:bg-[#A62331] disabled:bg-[#CBD2DC] dark:disabled:bg-[#2A3344] disabled:text-[#667085] dark:disabled:text-[#64748B] disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#D93848]"
-          >
-            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" aria-hidden="true" />
-            <span className="sm:hidden">STL</span>
-            <span className="hidden sm:inline">Baixar STL</span>
-          </button>
+          {/* Download Menu Dropdown (3MF, STL, OBJ) */}
+          <div ref={downloadMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              data-testid="topbar-download-menu-btn"
+              onClick={() => setDownloadMenuOpen((prev) => !prev)}
+              disabled={!canExport}
+              aria-expanded={downloadMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Menu de download (3MF, STL, OBJ)"
+              title="Baixar modelo 3D (3MF, STL ou OBJ)"
+              className="inline-flex items-center gap-1 sm:gap-1.5 h-10 sm:h-9 px-2.5 sm:px-3.5 rounded-xl sm:rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] active:bg-[#A62331] disabled:bg-[#CBD2DC] dark:disabled:bg-[#2A3344] disabled:text-[#667085] dark:disabled:text-[#64748B] disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#D93848]"
+            >
+              <Download className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>Baixar</span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 transition-transform ${
+                  downloadMenuOpen ? 'rotate-180' : ''
+                }`}
+                aria-hidden="true"
+              />
+            </button>
+
+            {downloadMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Opções de download do modelo 3D"
+                data-testid="topbar-download-menu"
+                className="fixed inset-x-3 top-16 sm:inset-x-auto sm:top-auto sm:absolute sm:right-0 sm:mt-2 sm:w-[320px] rounded-xl border border-[#D5DCE6] dark:border-[#2B3548] bg-white dark:bg-[#161B26] shadow-[0_18px_44px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.65)] p-2 z-40 space-y-1"
+              >
+                <div className="px-2.5 py-1.5 border-b border-[#E5E9F0] dark:border-[#262E3E]">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8]">
+                    Formato de exportação 3D
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="topbar-download-3mf"
+                  onClick={() => {
+                    setDownloadMenuOpen(false);
+                    onDownload3MF();
+                  }}
+                  className="w-full flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-[#FDF2F3] dark:hover:bg-[#2B171D]/75 text-left transition-colors cursor-pointer group"
+                >
+                  <span className="mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#FDF2F3] dark:bg-[#2B171D] text-[#D93848] dark:text-[#F87171] shrink-0">
+                    <Layers className="w-4 h-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-xs font-bold text-[#171A21] dark:text-[#F8FAFC] group-hover:text-[#D93848] dark:group-hover:text-[#F87171]">
+                        Baixar 3MF (.3mf)
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#D93848]/15 text-[#D93848] dark:text-[#F87171]">
+                        Recomendado
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-[#5A6375] dark:text-[#94A3B8] leading-snug">
+                      Preserva cores do filamento, peças separadas, medidas em mm e metadados do modelo.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="topbar-download-stl"
+                  onClick={() => {
+                    setDownloadMenuOpen(false);
+                    onDownloadSTL();
+                  }}
+                  className="w-full flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-[#F3F6FA] dark:hover:bg-[#1E2636] text-left transition-colors cursor-pointer"
+                >
+                  <span className="mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#EFF2F7] dark:bg-[#1E2534] text-[#374151] dark:text-[#CBD5E1] shrink-0">
+                    <Box className="w-4 h-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-[#171A21] dark:text-[#F8FAFC]">
+                      Baixar STL (.stl)
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-[#5A6375] dark:text-[#94A3B8] leading-snug">
+                      Malha binária universal pronta para fatiamento (Z-up, milímetros).
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="topbar-download-obj"
+                  onClick={() => {
+                    setDownloadMenuOpen(false);
+                    onDownloadOBJ();
+                  }}
+                  className="w-full flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-[#F3F6FA] dark:hover:bg-[#1E2636] text-left transition-colors cursor-pointer"
+                >
+                  <span className="mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#EFF2F7] dark:bg-[#1E2534] text-[#374151] dark:text-[#CBD5E1] shrink-0">
+                    <FileCode2 className="w-4 h-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-[#171A21] dark:text-[#F8FAFC]">
+                      Baixar OBJ (.obj)
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-[#5A6375] dark:text-[#94A3B8] leading-snug">
+                      Malha Wavefront para edição em softwares CAD 3D.
+                    </p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -290,9 +425,9 @@ export function TopBar({
                   data-testid="mobile-sidebar-close"
                   onClick={() => setMobileMenuOpen(false)}
                   aria-label="Fechar menu lateral"
-                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#5A6375] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F8FAFC] hover:bg-[#EFF2F7] dark:hover:bg-[#1F2737] transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-xl text-[#5A6375] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F8FAFC] hover:bg-[#EFF2F7] dark:hover:bg-[#1F2737] transition-colors cursor-pointer"
                 >
-                  <X className="w-4 h-4" aria-hidden="true" />
+                  <X className="w-5 h-5" aria-hidden="true" />
                 </button>
               </div>
 
@@ -319,14 +454,14 @@ export function TopBar({
                           setMobileMenuOpen(false);
                         }}
                         aria-current={isActive ? 'page' : undefined}
-                        className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-left transition-colors cursor-pointer ${
+                        className={`w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl text-left transition-colors cursor-pointer ${
                           isActive
                             ? 'bg-[#FDF2F3] dark:bg-[#2B171D] text-[#D93848] dark:text-[#F87171] border border-[#D93848]/30 dark:border-[#E84C5C]/40'
                             : 'text-[#171A21] dark:text-[#E2E8F0] hover:bg-[#F3F6FA] dark:hover:bg-[#1C2332] border border-transparent'
                         }`}
                       >
                         <div className="min-w-0">
-                          <div className="text-xs font-bold truncate">
+                          <div className="text-sm font-bold truncate">
                             {meta.shortLabel}
                           </div>
                           <div className="text-[11px] text-[#5A6375] dark:text-[#94A3B8] truncate">
@@ -360,9 +495,9 @@ export function TopBar({
                     setMobileMenuOpen(false);
                     onOpenSaveModal();
                   }}
-                  className="inline-flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl border border-[#D93848]/35 bg-[#FDF2F3] dark:bg-[#2B171D] text-[#D93848] dark:text-[#F87171] text-xs font-semibold transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 h-11 px-3 rounded-xl border border-[#D93848]/35 bg-[#FDF2F3] dark:bg-[#2B171D] text-[#D93848] dark:text-[#F87171] text-sm font-semibold transition-colors cursor-pointer"
                 >
-                  <Save className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <Save className="w-4 h-4 shrink-0" aria-hidden="true" />
                   <span>Salvar</span>
                 </button>
 
@@ -373,15 +508,15 @@ export function TopBar({
                     setMobileMenuOpen(false);
                     onOpenSavedProjects();
                   }}
-                  className="inline-flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26] text-[#171A21] dark:text-[#E2E8F0] text-xs font-semibold transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 h-11 px-3 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26] text-[#171A21] dark:text-[#E2E8F0] text-sm font-semibold transition-colors cursor-pointer"
                 >
-                  <FolderOpen className="w-3.5 h-3.5 text-[#D93848] shrink-0" aria-hidden="true" />
+                  <FolderOpen className="w-4 h-4 text-[#D93848] shrink-0" aria-hidden="true" />
                   <span>Salvos ({savedProjectsCount})</span>
                 </button>
               </div>
 
               {/* Build Plate Size Selector row for mobile */}
-              <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26]">
+              <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26]">
                 <span className="text-xs font-medium text-[#374151] dark:text-[#CBD5E1]">
                   Bandeja 3D
                 </span>
@@ -396,14 +531,14 @@ export function TopBar({
                 type="button"
                 data-testid="mobile-theme-toggle"
                 onClick={onToggleTheme}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26] hover:bg-[#F1F5F9] dark:hover:bg-[#1E2636] text-xs font-semibold text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between gap-2 px-3.5 py-3 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26] hover:bg-[#F1F5F9] dark:hover:bg-[#1E2636] text-sm font-semibold text-[#171A21] dark:text-[#E2E8F0] transition-colors cursor-pointer"
               >
                 <span>Tema da interface</span>
-                <span className="inline-flex items-center gap-1.5 text-[#5A6375] dark:text-[#94A3B8]">
+                <span className="inline-flex items-center gap-1.5 text-xs text-[#5A6375] dark:text-[#94A3B8]">
                   {isDark ? (
                     <>
                       <Sun
-                        className="w-3.5 h-3.5 text-[#FBBF24]"
+                        className="w-4 h-4 text-[#FBBF24]"
                         aria-hidden="true"
                       />
                       <span>Escuro</span>
@@ -411,7 +546,7 @@ export function TopBar({
                   ) : (
                     <>
                       <Moon
-                        className="w-3.5 h-3.5 text-[#374151]"
+                        className="w-4 h-4 text-[#374151]"
                         aria-hidden="true"
                       />
                       <span>Claro</span>
@@ -429,9 +564,9 @@ export function TopBar({
                     setMobileMenuOpen(false);
                     onOpenPWAInstall();
                   }}
-                  className="w-full flex items-center justify-center gap-2 h-9 px-3 rounded-xl border border-[#D93848]/35 bg-[#FDF2F3] dark:bg-[#2B171D] text-[#D93848] dark:text-[#F87171] text-xs font-semibold transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 h-11 px-3.5 rounded-xl border border-[#D93848]/35 bg-[#FDF2F3] dark:bg-[#2B171D] text-[#D93848] dark:text-[#F87171] text-sm font-semibold transition-colors cursor-pointer"
                 >
-                  <MonitorSmartphone className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <MonitorSmartphone className="w-4 h-4 shrink-0" aria-hidden="true" />
                   <span>Instalar aplicativo (PWA)</span>
                 </button>
               )}
@@ -444,9 +579,9 @@ export function TopBar({
                   setMobileMenuOpen(false);
                   onOpenPreload();
                 }}
-                className="w-full flex items-center justify-center gap-2 h-9 px-3 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26] hover:bg-[#F1F5F9] dark:hover:bg-[#1E2636] text-xs font-medium text-[#475569] dark:text-[#94A3B8] transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 h-11 px-3.5 rounded-xl border border-[#DCE2EC] dark:border-[#262E3E] bg-white dark:bg-[#161B26] hover:bg-[#F1F5F9] dark:hover:bg-[#1E2636] text-sm font-medium text-[#475569] dark:text-[#94A3B8] transition-colors cursor-pointer"
               >
-                <Sparkles className="w-3.5 h-3.5 text-[#D93848]" aria-hidden="true" />
+                <Sparkles className="w-4 h-4 text-[#D93848]" aria-hidden="true" />
                 <span>Tela inicial do app</span>
               </button>
             </div>

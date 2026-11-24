@@ -114,9 +114,9 @@ export function SaveProjectModal({
             data-testid="close-save-project-modal"
             onClick={onCancel}
             aria-label="Fechar janela de salvar"
-            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#5A6375] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F8FAFC] hover:bg-[#EFF2F7] dark:hover:bg-[#1F2738] transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-xl sm:rounded-lg text-[#5A6375] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F8FAFC] hover:bg-[#EFF2F7] dark:hover:bg-[#1F2738] transition-colors cursor-pointer"
           >
-            <X className="w-4 h-4" aria-hidden="true" />
+            <X className="w-5 h-5 sm:w-4 sm:h-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -180,20 +180,20 @@ export function SaveProjectModal({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-1">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 sm:gap-2 pt-1">
             <button
               type="button"
               onClick={onCancel}
-              className="h-9 px-3.5 rounded-lg border border-[#D1D8E3] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1A2130] hover:bg-[#EDF1F7] dark:hover:bg-[#232C3F] text-xs font-semibold text-[#374151] dark:text-[#CBD5E1] transition-colors cursor-pointer"
+              className="w-full sm:w-auto h-11 sm:h-9 px-4 sm:px-3.5 rounded-xl sm:rounded-lg border border-[#D1D8E3] dark:border-[#2C3649] bg-[#F7F9FC] dark:bg-[#1A2130] hover:bg-[#EDF1F7] dark:hover:bg-[#232C3F] text-sm sm:text-xs font-semibold text-[#374151] dark:text-[#CBD5E1] transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               data-testid="confirm-save-project-btn"
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] active:bg-[#A62331] text-white text-xs font-semibold transition-colors cursor-pointer"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 h-11 sm:h-9 px-4 rounded-xl sm:rounded-lg bg-[#D93848] hover:bg-[#BE2B3A] active:bg-[#A62331] text-white text-sm sm:text-xs font-semibold transition-colors cursor-pointer"
             >
-              <Save className="w-3.5 h-3.5" aria-hidden="true" />
+              <Save className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
               <span>{matchingExisting ? 'Atualizar projeto' : 'Salvar projeto'}</span>
             </button>
           </div>
