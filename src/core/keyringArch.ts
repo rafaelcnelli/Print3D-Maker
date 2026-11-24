@@ -552,10 +552,45 @@ export function findBestWordTopAnchor(
 }
 
 /**
- * Ensures geometry has exact position + normal attributes and no stale groups
+ * Ensures geometry has exact position + normal + color attributes and no stale groups
  * before passing into three-bvh-csg Brush.
+ *
+ * Keeping vertex `color` in CSG attributes guarantees that exterior solid triangles
+ * always retain pure `(1, 1, 1)` with ZERO bleeding across the sharp rim of the hole,
+ * while interior tunnel triangles inherit smooth, realistic cavity AO directly from
+ * the subtracted cutter mesh.
  */
-function prepareForCSG(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+function prepareSolidForCSG(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  const clean = geo.index ? geo.toNonIndexed() : geo.clone();
+  for (const key of Object.keys(clean.attributes)) {
+    if (key !== 'position' && key !== 'normal' && key !== 'color') {
+      clean.deleteAttribute(key);
+    }
+  }
+  if (!clean.getAttribute('normal')) {
+    clean.computeVertexNormals();
+  }
+  if (!clean.getAttribute('color')) {
+    const count = clean.getAttribute('position').count;
+    const colors = new Float32Array(count * 3);
+    colors.fill(1);
+    clean.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  }
+  clean.clearGroups();
+  return clean;
+}
+
+/**
+ * Prepares a subtracted cutter geometry with smooth natural cavity ambient occlusion
+ * baked into its vertex `color` attribute BEFORE CSG subtraction.
+ * Because `three-bvh-csg` interpolates attributes strictly within each source brush,
+ * exterior faces of the solid mesh are never darkened or smeared, and real inward
+ * normals from the subtracted cutter are preserved intact.
+ */
+function prepareCutterForCSG(
+  geo: THREE.BufferGeometry,
+  shadeAtLocalVertex: (x: number, y: number, z: number) => number
+): THREE.BufferGeometry {
   const clean = geo.index ? geo.toNonIndexed() : geo.clone();
   for (const key of Object.keys(clean.attributes)) {
     if (key !== 'position' && key !== 'normal') {
@@ -565,103 +600,27 @@ function prepareForCSG(geo: THREE.BufferGeometry): THREE.BufferGeometry {
   if (!clean.getAttribute('normal')) {
     clean.computeVertexNormals();
   }
+  const pos = clean.getAttribute('position');
+  const count = pos.count;
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const shade = THREE.MathUtils.clamp(
+      shadeAtLocalVertex(pos.getX(i), pos.getY(i), pos.getZ(i)),
+      0.24,
+      0.92
+    );
+    colors[i * 3] = shade;
+    colors[i * 3 + 1] = shade;
+    colors[i * 3 + 2] = shade;
+  }
+  clean.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   clean.clearGroups();
   return clean;
 }
 
-/**
- * Bakes realistic cavity ambient-occlusion vertex colors onto the interior surface
- * of the carved negative arch tunnel so that even on bright white filament (#F3F5F8)
- * and top/isometric views without hardware raytraced shadows, the curved hole is
- * visually crisp, deep, and unmistakable while leaving exported STL/OBJ untouched.
- */
-function applyArchCavityVertexOcclusion(
-  geo: THREE.BufferGeometry,
-  placement: NegativeArchPlacement
-): void {
-  const pos = geo.getAttribute('position');
-  const norm = geo.getAttribute('normal');
-  if (!pos) return;
-
-  const count = pos.count;
-  const colors = new Float32Array(count * 3);
-  const [cx, cy, cz] = placement.center;
-  const rotY = placement.rotation[1];
-  const cosY = Math.cos(rotY);
-  const sinY = Math.sin(rotY);
-  const majorR = placement.majorRadius;
-  const tubeR = placement.tubeRadius;
-  const dirX = cosY;
-  const dirZ = -sinY;
-  const entranceX = cx - dirX * majorR;
-  const entranceZ = cz - dirZ * majorR;
-
-  for (let i = 0; i < count; i++) {
-    const vx = pos.getX(i);
-    const vy = pos.getY(i);
-    const vz = pos.getZ(i);
-
-    const dx = vx - cx;
-    const dy = vy - cy;
-    const dz = vz - cz;
-
-    // Transform into torus local space (where torus ring lies in XY plane)
-    const lx = dx * cosY - dz * sinY;
-    const ly = dy;
-    const lz = dx * sinY + dz * cosY;
-
-    const ringR = Math.hypot(lx, ly);
-    const distToTorusTube = Math.hypot(ringR - majorR, lz);
-    const distToExitCyl =
-      lx >= -0.1 ? Math.hypot(ly + majorR, lz) : Infinity;
-    const distToEntranceShaft =
-      vy >= cy - 0.6
-        ? Math.hypot(vx - entranceX, vz - entranceZ)
-        : Infinity;
-
-    const minDist = Math.min(
-      distToTorusTube,
-      distToExitCyl,
-      distToEntranceShaft
-    );
-
-    if (minDist <= tubeR + 0.16) {
-      // Deep linear cavity shade (0.025..0.055 linear -> ~#222834 sRGB) so the recessed
-      // tunnel interior contrasts strongly against white/colored baseplates.
-      const depthFactor = THREE.MathUtils.clamp((cy - vy) / (majorR + 0.5), 0, 1);
-      const shade = 0.055 - depthFactor * 0.03;
-      colors[i * 3] = shade;
-      colors[i * 3 + 1] = shade * 1.05;
-      colors[i * 3 + 2] = shade * 1.18;
-
-      // Tilt upward cavity floor normals horizontally so overhead RoomEnvironment
-      // specular reflection doesn't wash out the dark interior tunnel from top view
-      if (norm && norm.getY(i) > 0.15) {
-        const nx = norm.getX(i);
-        const nz = norm.getZ(i);
-        const hLen = Math.hypot(nx, nz);
-        if (hLen > 1e-3) {
-          norm.setXYZ(i, (nx / hLen) * 0.98, -0.2, (nz / hLen) * 0.98);
-        } else {
-          norm.setXYZ(i, dirX * 0.98, -0.2, dirZ * 0.98);
-        }
-      }
-    } else {
-      colors[i * 3] = 1;
-      colors[i * 3 + 1] = 1;
-      colors[i * 3 + 2] = 1;
-    }
-  }
-
-  if (norm) {
-    norm.needsUpdate = true;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-}
-
 const _csgEvaluator = new Evaluator();
 _csgEvaluator.useGroups = false;
-_csgEvaluator.attributes = ['position', 'normal'];
+_csgEvaluator.attributes = ['position', 'normal', 'color'];
 
 /**
  * Carves a real 3D curved negative torus arch ("arco negativo") out of `solidGeo`
@@ -671,15 +630,25 @@ export function subtractNegativeKeyringArch(
   solidGeo: THREE.BufferGeometry,
   placement: NegativeArchPlacement
 ): THREE.BufferGeometry {
-  const preparedSolid = prepareForCSG(solidGeo);
+  const preparedSolid = prepareSolidForCSG(solidGeo);
 
   const torusGeo = new THREE.TorusGeometry(
     placement.majorRadius,
     placement.tubeRadius,
-    20,
-    40
+    24,
+    48
   );
-  const preparedTorus = prepareForCSG(torusGeo);
+  // Smooth natural cavity AO inside the curved tunnel:
+  // Lighter (0.58 linear) near both openings (-PI top entrance & -PI/2 exit),
+  // softly deeper (0.30 linear) inside the curved mid-tunnel bend (-3*PI/4).
+  const preparedTorus = prepareCutterForCSG(torusGeo, (lx, ly) => {
+    const ang = Math.atan2(ly, lx);
+    // Angular distance to the deepest point of the tunnel arc (-3*PI/4)
+    let diff = Math.abs(ang - -0.75 * Math.PI);
+    if (diff > Math.PI) diff = Math.PI * 2 - diff;
+    const depth = Math.cos(Math.min(diff, Math.PI * 0.25) * 2);
+    return 0.58 - depth * 0.28;
+  });
   torusGeo.dispose();
 
   let solidBrush = new Brush(preparedSolid);
@@ -714,7 +683,11 @@ export function subtractNegativeKeyringArch(
         24
       );
       exitCyl.rotateZ(Math.PI * 0.5);
-      const preparedExit = prepareForCSG(exitCyl);
+      const preparedExit = prepareCutterForCSG(exitCyl, (lx) => {
+        // Cylinder runs from -extLen/2 (inner end meeting torus) to +extLen/2 (outer exit mouth)
+        const t = THREE.MathUtils.clamp((lx + extLen * 0.5) / Math.max(extLen, 0.1), 0, 1);
+        return 0.44 + t * 0.16;
+      });
       exitCyl.dispose();
 
       const exitBrush = new Brush(preparedExit);
@@ -732,7 +705,6 @@ export function subtractNegativeKeyringArch(
     }
 
     const outGeo = solidBrush.geometry;
-    applyArchCavityVertexOcclusion(outGeo, placement);
     preparedSolid.dispose();
     return outGeo;
   } catch {
@@ -751,7 +723,7 @@ export function subtractVerticalKeyringEntrance(
   solidGeo: THREE.BufferGeometry,
   placement: NegativeArchPlacement
 ): THREE.BufferGeometry {
-  const preparedSolid = prepareForCSG(solidGeo);
+  const preparedSolid = prepareSolidForCSG(solidGeo);
   const rotY = placement.rotation[1];
   const dirX = Math.cos(rotY);
   const dirZ = -Math.sin(rotY);
@@ -766,7 +738,11 @@ export function subtractVerticalKeyringEntrance(
     shaftHeight,
     28
   );
-  const preparedCyl = prepareForCSG(cylGeo);
+  const preparedCyl = prepareCutterForCSG(cylGeo, (_lx, ly) => {
+    // Cylinder runs vertically from -shaftHeight/2 (lower mouth) to +shaftHeight/2 (upper rim)
+    const t = THREE.MathUtils.clamp((ly + shaftHeight * 0.5) / shaftHeight, 0, 1);
+    return 0.46 + t * 0.16;
+  });
   cylGeo.dispose();
 
   const solidBrush = new Brush(preparedSolid);
@@ -783,7 +759,6 @@ export function subtractVerticalKeyringEntrance(
   try {
     const resultBrush = _csgEvaluator.evaluate(solidBrush, cylBrush, SUBTRACTION);
     const outGeo = resultBrush.geometry;
-    applyArchCavityVertexOcclusion(outGeo, placement);
     preparedSolid.dispose();
     preparedCyl.dispose();
     return outGeo;

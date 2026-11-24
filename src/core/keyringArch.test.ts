@@ -151,3 +151,78 @@ test('findDirectionalSilhouetteAnchor resolves all 8 cardinal directions accurat
   matA.dispose();
   matB.dispose();
 });
+
+test('negative keyring arch cavity shading never bleeds onto exterior triangles on heart-name, keychain, or svg-keychain', () => {
+  const matA = new THREE.MeshStandardMaterial();
+  const matB = new THREE.MeshStandardMaterial();
+
+  for (const tpl of ['heart-name', 'keychain', 'svg-keychain'] as const) {
+    const cfg = createDefaultConfig(tpl);
+    if (tpl === 'svg-keychain') cfg.svgAttachMode = 'arch';
+    if (tpl === 'keychain') {
+      cfg.svgAttachMode = 'arch';
+      cfg.keyringArch = true;
+    }
+    const built = buildProjectModel(cfg, matA, matB);
+    let checkedMeshCount = 0;
+
+    built.group.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const col = obj.geometry.getAttribute('color');
+      if (!col) return;
+      checkedMeshCount++;
+
+      const idx = obj.geometry.index;
+      const triCount = idx ? idx.count / 3 : col.count / 3;
+      const getIdx = (t: number, k: number) =>
+        idx ? idx.getX(t * 3 + k) : t * 3 + k;
+
+      let mixedTris = 0;
+      let cavityTris = 0;
+      let minChannel = Infinity;
+
+      for (let t = 0; t < triCount; t++) {
+        const c0 = col.getX(getIdx(t, 0));
+        const c1 = col.getX(getIdx(t, 1));
+        const c2 = col.getX(getIdx(t, 2));
+        minChannel = Math.min(minChannel, c0, c1, c2);
+        const exteriorCount =
+          (c0 > 0.99 ? 1 : 0) + (c1 > 0.99 ? 1 : 0) + (c2 > 0.99 ? 1 : 0);
+        if (exteriorCount === 1 || exteriorCount === 2) {
+          mixedTris++;
+        } else if (exteriorCount === 0) {
+          cavityTris++;
+        }
+      }
+
+      assert.equal(
+        mixedTris,
+        0,
+        `${tpl}/${obj.name} must have zero mixed dark/light triangles bleeding across the hole rim (found ${mixedTris})`
+      );
+      assert.ok(
+        minChannel >= 0.24,
+        `${tpl}/${obj.name} cavity shading should stay natural (>= 0.24 linear), not near-black stain (got ${minChannel.toFixed(3)})`
+      );
+      if (
+        obj.name === 'HeartLetters' ||
+        obj.name === 'KeychainBase' ||
+        obj.name === 'SvgKeychainBase'
+      ) {
+        assert.ok(
+          cavityTris > 50,
+          `${tpl}/${obj.name} must preserve interior cavity triangles (got ${cavityTris})`
+        );
+      }
+    });
+
+    assert.ok(
+      checkedMeshCount > 0,
+      `${tpl} should have at least one carved mesh with cavity AO`
+    );
+    built.disposeGeometries();
+  }
+
+  matA.dispose();
+  matB.dispose();
+});
