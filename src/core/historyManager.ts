@@ -75,6 +75,7 @@ export function inferConfigMergeKey(patch: Partial<ProjectConfig>): string | nul
     case 'monogramNamePos':
     case 'boxLetterBorderMm':
     case 'svgBorderMm':
+    case 'keyringHoleMm':
     case 'imageThreshold':
     case 'textScale':
       return `config:${onlyKey}`;

@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -22,6 +22,9 @@ import {
   FILAMENT_COLORS,
   FILAMENT_FINISHES,
   FONT_STYLES,
+  getKeychainArchMaxDiameterMm,
+  HEART_KEYRING_HOLE_RANGE,
+  KEYCHAIN_KEYRING_HOLE_RANGE,
   KEYRING_DIRECTIONS,
   TEMPLATES,
 } from '../core/projectDefaults';
@@ -54,101 +57,270 @@ const CARDINAL_GRID_CELLS: (KeyringDirection | null)[] = [
   'bottom-right',
 ];
 
+function HoleDiameterControl({
+  sliderId,
+  inputId,
+  sliderTestId,
+  inputTestId,
+  valueTestId,
+  valueMm,
+  minMm,
+  maxMm,
+  step = 0.1,
+  hint,
+  onChange,
+}: {
+  sliderId: string;
+  inputId: string;
+  sliderTestId: string;
+  inputTestId: string;
+  valueTestId: string;
+  valueMm: number;
+  minMm: number;
+  maxMm: number;
+  step?: number;
+  hint?: string;
+  onChange: (nextMm: number) => void;
+}) {
+  const clampedMm = Number(
+    Math.min(maxMm, Math.max(minMm, valueMm)).toFixed(1)
+  );
+  const [draft, setDraft] = useState(clampedMm.toFixed(1));
+
+  useEffect(() => {
+    setDraft(clampedMm.toFixed(1));
+  }, [clampedMm]);
+
+  const commitDraft = () => {
+    const parsed = Number(draft.replace(',', '.'));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      const next = Number(
+        Math.min(maxMm, Math.max(minMm, parsed)).toFixed(1)
+      );
+      onChange(next);
+      setDraft(next.toFixed(1));
+    } else {
+      setDraft(clampedMm.toFixed(1));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2 text-[11px]">
+        <label
+          htmlFor={inputId}
+          className="font-medium text-[#5A6375] dark:text-[#94A3B8] truncate"
+        >
+          Diâmetro do furo (Ø)
+          {hint && (
+            <span className="ml-1 text-[10px] font-normal text-[#8A94A6] dark:text-[#64748B]">
+              ({hint})
+            </span>
+          )}
+        </label>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <input
+            id={inputId}
+            data-testid={inputTestId}
+            type="number"
+            inputMode="decimal"
+            min={minMm}
+            max={maxMm}
+            step={step}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              const parsed = Number(e.target.value.replace(',', '.'));
+              if (
+                Number.isFinite(parsed) &&
+                parsed >= minMm &&
+                parsed <= maxMm
+              ) {
+                onChange(Number(parsed.toFixed(1)));
+              }
+            }}
+            onBlur={commitDraft}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                commitDraft();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            aria-label="Diâmetro do furo em milímetros"
+            className="w-16 h-8 sm:h-7 px-1.5 rounded-md border border-[#CBD5E1] dark:border-[#323E54] bg-white dark:bg-[#0F141D] text-right font-mono text-xs font-semibold tabular-nums text-[#171A21] dark:text-[#F1F5F9] focus:outline-none focus:border-[#D93848]"
+          />
+          <span className="text-[11px] font-mono text-[#64748B] dark:text-[#94A3B8]">
+            mm
+          </span>
+          <span data-testid={valueTestId} className="sr-only">
+            {clampedMm.toFixed(1)} mm
+          </span>
+        </div>
+      </div>
+
+      <input
+        id={sliderId}
+        data-testid={sliderTestId}
+        type="range"
+        min={minMm}
+        max={maxMm}
+        step={step}
+        value={clampedMm}
+        onChange={(e) => onChange(Number(Number(e.target.value).toFixed(1)))}
+        aria-label="Controle deslizante de diâmetro do furo em milímetros"
+        className="studio-slider w-full"
+      />
+    </div>
+  );
+}
+
 function KeyringAttachmentAndCardinalControl({
+  enabled,
   attachMode,
   direction,
+  holeMm,
+  minHoleMm,
+  maxHoleMm,
+  holeHint,
+  onToggleEnabled,
   onSelectMode,
   onSelectDirection,
+  onChangeHoleMm,
 }: {
+  enabled: boolean;
   attachMode: SvgAttachMode;
   direction: KeyringDirection;
+  holeMm: number;
+  minHoleMm: number;
+  maxHoleMm: number;
+  holeHint?: string;
+  onToggleEnabled: (enabled: boolean) => void;
   onSelectMode: (mode: SvgAttachMode) => void;
   onSelectDirection: (dir: KeyringDirection) => void;
+  onChangeHoleMm: (holeMm: number) => void;
 }) {
   const activeDirMeta =
     KEYRING_DIRECTIONS.find((d) => d.id === direction) ?? KEYRING_DIRECTIONS[1];
 
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="flex flex-col gap-1 flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-1 text-[11px]">
-          <span className="font-medium text-[#5A6375] dark:text-[#94A3B8]">
-            Encaixe da argola
-          </span>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
+          <input
+            type="checkbox"
+            data-testid="toggle-keyring-enabled"
+            checked={enabled}
+            onChange={(e) => onToggleEnabled(e.target.checked)}
+            className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+          />
+          <span>Furo para argola</span>
+        </label>
+        {enabled ? (
           <span
             data-testid="active-keyring-direction-label"
-            className="font-semibold text-[#D93848] dark:text-[#F46472] truncate"
+            className="text-[11px] font-semibold text-[#D93848] dark:text-[#F46472] truncate"
           >
             {activeDirMeta.label}
           </span>
-        </div>
-        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
-          {(
-            [
-              { id: 'arch', label: 'Arco neg.' },
-              { id: 'hole', label: 'Furo red.' },
-              { id: 'loop', label: 'Argola' },
-            ] as { id: SvgAttachMode; label: string }[]
-          ).map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              data-testid={`svg-attach-${mode.id}`}
-              onClick={() => onSelectMode(mode.id)}
-              aria-pressed={attachMode === mode.id}
-              className={`flex-1 h-9 sm:h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                attachMode === mode.id
-                  ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
-                  : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
-              }`}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
+        ) : (
+          <span className="text-[11px] font-medium text-[#8A94A6] dark:text-[#64748B]">
+            Sem furo
+          </span>
+        )}
       </div>
 
-      {/* 3x3 Square with the 8 Cardinal Directions */}
-      <div
-        data-testid="keyring-cardinal-pad"
-        role="group"
-        aria-label="Escolher direção do encaixe da argola (8 cardeais)"
-        className="grid grid-cols-3 gap-1 sm:gap-0.5 p-1.5 sm:p-1 rounded-xl bg-[#EFF2F7] dark:bg-[#0E121A] border border-[#D1D8E3]/80 dark:border-[#252F42] shrink-0"
-      >
-        {CARDINAL_GRID_CELLS.map((cellDir, idx) => {
-          if (!cellDir) {
-            return (
-              <div
-                key={`center-${idx}`}
-                className="w-8 h-8 sm:w-5 sm:h-5 flex items-center justify-center"
-                aria-hidden="true"
-              >
-                <span className="w-2.5 h-2.5 sm:w-2 sm:h-2 rounded-full bg-[#8A94A6]/60 dark:bg-[#64748B]/70 ring-2 ring-[#D93848]/25" />
+      {enabled && (
+        <>
+          <div className="flex items-center gap-2.5">
+            <div className="flex flex-col gap-1 flex-1 min-w-0">
+              <span className="text-[11px] font-medium text-[#5A6375] dark:text-[#94A3B8]">
+                Tipo de encaixe
+              </span>
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#EFF2F7] dark:bg-[#0E121A]">
+                {(
+                  [
+                    { id: 'arch', label: 'Arco neg.' },
+                    { id: 'hole', label: 'Furo red.' },
+                    { id: 'loop', label: 'Argola' },
+                  ] as { id: SvgAttachMode; label: string }[]
+                ).map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    data-testid={`svg-attach-${mode.id}`}
+                    onClick={() => onSelectMode(mode.id)}
+                    aria-pressed={attachMode === mode.id}
+                    className={`flex-1 h-9 sm:h-7 px-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                      attachMode === mode.id
+                        ? 'bg-white dark:bg-[#232B3B] text-[#171A21] dark:text-[#F8FAFC] shadow-xs'
+                        : 'text-[#525C6E] dark:text-[#94A3B8] hover:text-[#171A21] dark:hover:text-[#F1F5F9]'
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
               </div>
-            );
-          }
-          const meta = KEYRING_DIRECTIONS.find((d) => d.id === cellDir)!;
-          const active = direction === cellDir;
-          return (
-            <button
-              key={cellDir}
-              type="button"
-              data-testid={`keyring-dir-${cellDir}`}
-              title={`Posição: ${meta.label}`}
-              aria-label={`Posição ${meta.label}`}
-              aria-pressed={active}
-              onClick={() => onSelectDirection(cellDir)}
-              className={`w-8 h-8 sm:w-5 sm:h-5 rounded-lg sm:rounded-md flex items-center justify-center text-sm sm:text-[11px] font-bold leading-none transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
-                active
-                  ? 'bg-[#D93848] text-white shadow-xs scale-105'
-                  : 'bg-white/80 dark:bg-[#192130] text-[#4E5869] dark:text-[#94A3B8] hover:bg-white dark:hover:bg-[#253046] hover:text-[#171A21] dark:hover:text-[#F8FAFC]'
-              }`}
+            </div>
+
+            {/* 3x3 Square with the 8 Cardinal Directions */}
+            <div
+              data-testid="keyring-cardinal-pad"
+              role="group"
+              aria-label="Escolher direção do encaixe da argola (8 cardeais)"
+              className="grid grid-cols-3 gap-1 sm:gap-0.5 p-1.5 sm:p-1 rounded-xl bg-[#EFF2F7] dark:bg-[#0E121A] border border-[#D1D8E3]/80 dark:border-[#252F42] shrink-0"
             >
-              {meta.shortLabel}
-            </button>
-          );
-        })}
-      </div>
+              {CARDINAL_GRID_CELLS.map((cellDir, idx) => {
+                if (!cellDir) {
+                  return (
+                    <div
+                      key={`center-${idx}`}
+                      className="w-8 h-8 sm:w-5 sm:h-5 flex items-center justify-center"
+                      aria-hidden="true"
+                    >
+                      <span className="w-2.5 h-2.5 sm:w-2 sm:h-2 rounded-full bg-[#8A94A6]/60 dark:bg-[#64748B]/70 ring-2 ring-[#D93848]/25" />
+                    </div>
+                  );
+                }
+                const meta = KEYRING_DIRECTIONS.find((d) => d.id === cellDir)!;
+                const active = direction === cellDir;
+                return (
+                  <button
+                    key={cellDir}
+                    type="button"
+                    data-testid={`keyring-dir-${cellDir}`}
+                    title={`Posição: ${meta.label}`}
+                    aria-label={`Posição ${meta.label}`}
+                    aria-pressed={active}
+                    onClick={() => onSelectDirection(cellDir)}
+                    className={`w-8 h-8 sm:w-5 sm:h-5 rounded-lg sm:rounded-md flex items-center justify-center text-sm sm:text-[11px] font-bold leading-none transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D93848] ${
+                      active
+                        ? 'bg-[#D93848] text-white shadow-xs scale-105'
+                        : 'bg-white/80 dark:bg-[#192130] text-[#4E5869] dark:text-[#94A3B8] hover:bg-white dark:hover:bg-[#253046] hover:text-[#171A21] dark:hover:text-[#F8FAFC]'
+                    }`}
+                  >
+                    {meta.shortLabel}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <HoleDiameterControl
+            sliderId="slider-keychain-hole-size"
+            inputId="input-keychain-hole-diameter"
+            sliderTestId="keychain-hole-size-slider"
+            inputTestId="keychain-hole-diameter-input"
+            valueTestId="keychain-hole-size-value"
+            valueMm={holeMm}
+            minMm={minHoleMm}
+            maxMm={maxHoleMm}
+            step={0.1}
+            hint={holeHint}
+            onChange={onChangeHoleMm}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -727,19 +899,58 @@ export function ControlDock({
                       </div>
                     </div>
 
-                    <KeyringAttachmentAndCardinalControl
-                      attachMode={config.svgAttachMode}
-                      direction={config.keyringDirection ?? 'top'}
-                      onSelectMode={(mode) =>
-                        onUpdateConfig({
-                          svgAttachMode: mode,
-                          keyringArch: mode === 'arch',
-                        })
-                      }
-                      onSelectDirection={(dir) =>
-                        onUpdateConfig({ keyringDirection: dir })
-                      }
-                    />
+                    {(() => {
+                      const isArch = config.svgAttachMode === 'arch';
+                      const maxArchMm = getKeychainArchMaxDiameterMm(
+                        config.depthMm,
+                        config.bevelMm,
+                        true
+                      );
+                      const minMm = isArch ? 1.2 : KEYCHAIN_KEYRING_HOLE_RANGE.min;
+                      const maxMm = isArch
+                        ? maxArchMm
+                        : KEYCHAIN_KEYRING_HOLE_RANGE.max;
+                      const currentMm =
+                        config.keyringHoleMm ?? (isArch ? 2.2 : 5.0);
+                      return (
+                        <KeyringAttachmentAndCardinalControl
+                          enabled={config.keyringEnabled !== false}
+                          attachMode={config.svgAttachMode}
+                          direction={config.keyringDirection ?? 'top'}
+                          holeMm={Math.min(maxMm, Math.max(minMm, currentMm))}
+                          minHoleMm={minMm}
+                          maxHoleMm={maxMm}
+                          holeHint={
+                            isArch ? `máx. ${maxArchMm.toFixed(1)} mm` : undefined
+                          }
+                          onToggleEnabled={(enabled) =>
+                            onUpdateConfig({ keyringEnabled: enabled })
+                          }
+                          onSelectMode={(mode) => {
+                            let nextHoleMm = currentMm;
+                            if (mode === 'arch') {
+                              nextHoleMm = Math.min(currentMm, maxArchMm);
+                            } else if (
+                              config.svgAttachMode === 'arch' &&
+                              currentMm <= 2.4
+                            ) {
+                              nextHoleMm = KEYCHAIN_KEYRING_HOLE_RANGE.defaultMm;
+                            }
+                            onUpdateConfig({
+                              svgAttachMode: mode,
+                              keyringArch: mode === 'arch',
+                              keyringHoleMm: Number(nextHoleMm.toFixed(1)),
+                            });
+                          }}
+                          onSelectDirection={(dir) =>
+                            onUpdateConfig({ keyringDirection: dir })
+                          }
+                          onChangeHoleMm={(holeMm) =>
+                            onUpdateConfig({ keyringHoleMm: holeMm })
+                          }
+                        />
+                      );
+                    })()}
 
                     <div className="flex items-center gap-3">
                       <div className="flex flex-col gap-1.5 flex-1 min-w-0">
@@ -839,31 +1050,56 @@ export function ControlDock({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3 pt-3 sm:pt-4">
-                      <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
-                        <input
-                          type="checkbox"
-                          data-testid="toggle-keyring-arch"
-                          checked={config.keyringArch}
-                          onChange={(e) =>
-                            onUpdateConfig({ keyringArch: e.target.checked })
-                          }
-                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
-                        />
-                        <span>Arco negativo (1ª/2ª letra)</span>
-                      </label>
+                    <div className="flex flex-col gap-2.5 pt-2 sm:pt-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            data-testid="toggle-keyring-arch"
+                            checked={config.keyringArch && config.keyringEnabled !== false}
+                            onChange={(e) =>
+                              onUpdateConfig({
+                                keyringArch: e.target.checked,
+                                keyringEnabled: e.target.checked,
+                              })
+                            }
+                            className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                          />
+                          <span>Furo para argola (arco)</span>
+                        </label>
 
-                      <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={config.useDualColor}
-                          onChange={(e) =>
-                            onUpdateConfig({ useDualColor: e.target.checked })
+                        <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2A313D] dark:text-[#CBD5E1] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={config.useDualColor}
+                            onChange={(e) =>
+                              onUpdateConfig({ useDualColor: e.target.checked })
+                            }
+                            className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                          />
+                          <span>Duas cores</span>
+                        </label>
+                      </div>
+
+                      {config.keyringArch && config.keyringEnabled !== false && (
+                        <HoleDiameterControl
+                          sliderId="slider-heart-hole-size"
+                          inputId="input-heart-hole-diameter"
+                          sliderTestId="heart-hole-size-slider"
+                          inputTestId="heart-hole-diameter-input"
+                          valueTestId="heart-hole-size-value"
+                          valueMm={
+                            config.keyringHoleMm ??
+                            HEART_KEYRING_HOLE_RANGE.defaultMm
                           }
-                          className="w-4 h-4 accent-[#D93848] rounded cursor-pointer"
+                          minMm={HEART_KEYRING_HOLE_RANGE.min}
+                          maxMm={HEART_KEYRING_HOLE_RANGE.max}
+                          step={HEART_KEYRING_HOLE_RANGE.step}
+                          onChange={(nextMm) =>
+                            onUpdateConfig({ keyringHoleMm: nextMm })
+                          }
                         />
-                        <span>Duas cores</span>
-                      </label>
+                      )}
                     </div>
                   </>
                 )}
@@ -960,23 +1196,59 @@ export function ControlDock({
                       </label>
                     </div>
 
-                    <KeyringAttachmentAndCardinalControl
-                      attachMode={
+                    {(() => {
+                      const effectiveMode: SvgAttachMode =
                         !config.keyringArch && config.svgAttachMode === 'arch'
                           ? 'hole'
-                          : config.svgAttachMode
-                      }
-                      direction={config.keyringDirection ?? 'top'}
-                      onSelectMode={(mode) =>
-                        onUpdateConfig({
-                          svgAttachMode: mode,
-                          keyringArch: mode === 'arch',
-                        })
-                      }
-                      onSelectDirection={(dir) =>
-                        onUpdateConfig({ keyringDirection: dir })
-                      }
-                    />
+                          : config.svgAttachMode;
+                      const isArch = effectiveMode === 'arch';
+                      const maxArchMm = getKeychainArchMaxDiameterMm(
+                        config.depthMm,
+                        config.bevelMm,
+                        false
+                      );
+                      const minMm = isArch ? 1.2 : KEYCHAIN_KEYRING_HOLE_RANGE.min;
+                      const maxMm = isArch
+                        ? maxArchMm
+                        : KEYCHAIN_KEYRING_HOLE_RANGE.max;
+                      const currentMm =
+                        config.keyringHoleMm ?? (isArch ? 2.2 : 5.0);
+                      return (
+                        <KeyringAttachmentAndCardinalControl
+                          enabled={config.keyringEnabled !== false}
+                          attachMode={effectiveMode}
+                          direction={config.keyringDirection ?? 'top'}
+                          holeMm={Math.min(maxMm, Math.max(minMm, currentMm))}
+                          minHoleMm={minMm}
+                          maxHoleMm={maxMm}
+                          holeHint={
+                            isArch ? `máx. ${maxArchMm.toFixed(1)} mm` : undefined
+                          }
+                          onToggleEnabled={(enabled) =>
+                            onUpdateConfig({ keyringEnabled: enabled })
+                          }
+                          onSelectMode={(mode) => {
+                            let nextHoleMm = currentMm;
+                            if (mode === 'arch') {
+                              nextHoleMm = Math.min(currentMm, maxArchMm);
+                            } else if (isArch && currentMm <= 2.4) {
+                              nextHoleMm = KEYCHAIN_KEYRING_HOLE_RANGE.defaultMm;
+                            }
+                            onUpdateConfig({
+                              svgAttachMode: mode,
+                              keyringArch: mode === 'arch',
+                              keyringHoleMm: Number(nextHoleMm.toFixed(1)),
+                            });
+                          }}
+                          onSelectDirection={(dir) =>
+                            onUpdateConfig({ keyringDirection: dir })
+                          }
+                          onChangeHoleMm={(holeMm) =>
+                            onUpdateConfig({ keyringHoleMm: holeMm })
+                          }
+                        />
+                      );
+                    })()}
                   </>
                 )}
 

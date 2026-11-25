@@ -85,10 +85,14 @@ export interface ProjectConfig {
   accentColor: string;
   useDualColor: boolean;
   finish: FilamentFinishId;
+  /** Whether a keyring hole/arch attachment is enabled on keyring-capable templates */
+  keyringEnabled: boolean;
   /** Negative curved arch tunnel carved at the top of the first letter for a keyring */
   keyringArch: boolean;
   /** 8-way cardinal/intercardinal position for the keyring attachment */
   keyringDirection: KeyringDirection;
+  /** Keyring hole / arch diameter in millimeters */
+  keyringHoleMm: number;
   // Heart-Name specific
   heartMode: HeartStructureMode;
   heartKeyring: boolean;

@@ -3,7 +3,7 @@ import type {
   ImportedImagePixels,
   ProjectConfig,
 } from '../types/project';
-import { TEMPLATES } from './projectDefaults';
+import { createDefaultConfig, TEMPLATES } from './projectDefaults';
 
 export interface SavedProject {
   id: string;
@@ -99,6 +99,24 @@ export function serializeSavedProject(project: SavedProject): SerializedSavedPro
   };
 }
 
+export function normalizeLoadedConfig(rawConfig: Partial<ProjectConfig>): ProjectConfig {
+  const defaults = createDefaultConfig(rawConfig.template ?? 'heart-name');
+  const merged: ProjectConfig = {
+    ...defaults,
+    ...rawConfig,
+  };
+  if (rawConfig.keyringEnabled === undefined) {
+    if (merged.template === 'heart-name') {
+      merged.keyringEnabled = merged.keyringArch;
+    } else if (merged.template === 'keychain' || merged.template === 'svg-keychain') {
+      merged.keyringEnabled = true;
+    } else {
+      merged.keyringEnabled = false;
+    }
+  }
+  return merged;
+}
+
 export function deserializeSavedProject(raw: SerializedSavedProject): SavedProject {
   const { imagePixels, ...restConfig } = raw.config;
   return {
@@ -107,7 +125,7 @@ export function deserializeSavedProject(raw: SerializedSavedProject): SavedProje
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
     buildPlate: { ...raw.buildPlate },
-    config: {
+    config: normalizeLoadedConfig({
       ...restConfig,
       imagePixels: imagePixels
         ? {
@@ -116,7 +134,7 @@ export function deserializeSavedProject(raw: SerializedSavedProject): SavedProje
             rgba: base64ToUint8(imagePixels.rgbaBase64),
           }
         : null,
-    },
+    }),
   };
 }
 
@@ -255,7 +273,10 @@ export async function loadAllSavedProjects(): Promise<SavedProject[]> {
       const store = tx.objectStore(STORE_NAME);
       const req = store.getAll();
       req.onsuccess = () => {
-        const list = (req.result as SavedProject[] | undefined) ?? [];
+        const list = ((req.result as SavedProject[] | undefined) ?? []).map((item) => ({
+          ...item,
+          config: normalizeLoadedConfig(item.config),
+        }));
         resolve(sortSavedProjects(list));
       };
       req.onerror = () => reject(req.error);

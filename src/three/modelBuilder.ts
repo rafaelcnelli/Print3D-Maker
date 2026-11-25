@@ -23,6 +23,7 @@ import {
   type NegativeArchPlacement,
 } from '../core/keyringArch';
 import { buildVectorTextShapes } from '../core/vectorFont';
+import { getKeychainArchMaxDiameterMm } from '../core/projectDefaults';
 import type { ProjectConfig, SvgAttachMode } from '../types/project';
 
 export interface BuiltModelResult {
@@ -277,8 +278,9 @@ function buildHeartNameModel(
 
     let finalLettersGeo: THREE.BufferGeometry = warpedGeo;
 
-    // Default negative keyring arch ("arco negativo") carved at the top of the 1st or 2nd letter (whichever fits best)
-    if (config.keyringArch && builtText.firstLetterShapes.length > 0) {
+    // Negative keyring arch ("arco negativo") carved at the top of the 1st or 2nd letter (whichever fits best)
+    const heartKeyringOn = config.keyringArch && config.keyringEnabled !== false;
+    if (heartKeyringOn && builtText.firstLetterShapes.length > 0) {
       const anchor = findFirstLetterTopAnchor(
         builtText.firstLetterShapes,
         builtText.firstLetterCapY,
@@ -291,15 +293,20 @@ function buildHeartNameModel(
         : Math.max(heartAtAnchor.yMin + 0.8, heartAtAnchor.yMax);
       const topEdgeZ = baselineZ - anchor.topY + zBackOffset;
 
-      const majorRadius = THREE.MathUtils.clamp(
-        Math.min(anchor.recommendedMajorRadius, D * 0.145, H * 0.055),
-        2.1,
-        2.75
-      );
+      const requestedHoleMm = THREE.MathUtils.clamp(config.keyringHoleMm ?? 2.0, 1.2, 3.6);
+      const requestedTubeR = requestedHoleMm * 0.5;
+      const maxSafeTubeR = Math.max(0.75, (anchor.solidWidth - 0.85) * 0.5);
       const tubeRadius = THREE.MathUtils.clamp(
-        anchor.recommendedTubeRadius,
-        0.85,
-        1.15
+        requestedTubeR,
+        0.58,
+        Math.min(1.75, maxSafeTubeR)
+      );
+      const maxSafeMajor = Math.min(D * 0.165, H * 0.068, 3.6);
+      const targetMajor = Math.max(tubeRadius * 2.25, tubeRadius + 1.2, 1.85);
+      const majorRadius = THREE.MathUtils.clamp(
+        targetMajor,
+        tubeRadius + 1.05,
+        Math.max(tubeRadius + 1.15, maxSafeMajor)
       );
 
       // Shift center slightly outward (+0.18mm in Y, -0.18mm in Z) so the tunnel never
@@ -546,10 +553,17 @@ function buildKeychainModel(
   const radius =
     config.keychainShape === 'capsule' ? H * 0.49 : Math.min(5.5, H * 0.25);
 
+  const hasKeyring = config.keyringEnabled !== false;
   const attachMode: SvgAttachMode =
     !config.keyringArch && config.svgAttachMode === 'arch'
       ? 'hole'
       : config.svgAttachMode;
+  const maxArchDiam = getKeychainArchMaxDiameterMm(totalThick, bevel, false);
+  const holeMm = THREE.MathUtils.clamp(
+    config.keyringHoleMm ?? (attachMode === 'arch' ? 2.2 : 5.0),
+    attachMode === 'arch' ? 1.2 : 1.5,
+    attachMode === 'arch' ? maxArchDiam : 10.0
+  );
 
   let baseShape: THREE.Shape;
   let heartH = H;
@@ -585,16 +599,21 @@ function buildKeychainModel(
   );
 
   let keychainArchPlacement: NegativeArchPlacement | null = null;
-  if (attachMode === 'arch') {
+  if (hasKeyring && attachMode === 'arch') {
     const baseBevelThick = bevel > 0.05 ? bevel * 0.78 : 0;
     const baseTopY = baseThick + baseBevelThick;
     const baseBottomY = -baseBevelThick;
     const baseHeight = baseTopY - baseBottomY;
-    const tubeRadius = THREE.MathUtils.clamp(baseHeight * 0.26, 0.96, 1.12);
-    const majorRadius = THREE.MathUtils.clamp(baseHeight * 0.55, 2.08, 2.42);
+    const tubeRadius = holeMm * 0.5;
+    const maxMajor = Math.max(tubeRadius + 0.75, baseHeight - 0.42 - tubeRadius);
+    const majorRadius = THREE.MathUtils.clamp(
+      tubeRadius + Math.max(0.8, tubeRadius * 0.65),
+      tubeRadius + 0.75,
+      maxMajor
+    );
     const archCenterY = Math.max(
       baseTopY + 0.05,
-      baseBottomY + majorRadius + tubeRadius + 0.45
+      baseBottomY + majorRadius + tubeRadius + 0.4
     );
     const dirX = anchor.ux;
     const dirZ = -anchor.uy;
@@ -688,21 +707,26 @@ function buildKeychainModel(
   }
 
   // 4. Protruding Attachment Modes: 'hole' (punched rounded tab + collar) OR 'loop' (protruding 3D arch)
-  if (attachMode === 'hole') {
-    const holeR = 2.45;
-    const outerTabR = 5.9;
-    const tabCenterX = anchor.protrudeX + anchor.cardinalUx * 2.85;
-    const tabCenterY = anchor.protrudeY + anchor.cardinalUy * 2.85;
+  if (hasKeyring && attachMode === 'hole') {
+    const holeR = holeMm * 0.5;
+    const wallMm = Math.max(2.6, Math.min(3.6, holeR * 0.65 + 1.8));
+    const outerTabR = holeR + wallMm;
+    const protrudeDist = holeR + 0.4;
+    const tabCenterX = anchor.protrudeX + anchor.cardinalUx * protrudeDist;
+    const tabCenterY = anchor.protrudeY + anchor.cardinalUy * protrudeDist;
 
+    const tabBevelEnabled = bevel > 0.05;
+    const tabBevelSize = tabBevelEnabled ? bevel * 0.65 : 0;
     const tabShape = new THREE.Shape();
     tabShape.absarc(tabCenterX, tabCenterY, outerTabR, 0, Math.PI * 2, false);
-    addCircularHole(tabShape, tabCenterX, tabCenterY, holeR);
+    // Offset inner hole path by +bevelSize so the final beveled inner wall sits at exact radius holeR
+    addCircularHole(tabShape, tabCenterX, tabCenterY, holeR + tabBevelSize);
 
     const tabGeo = new THREE.ExtrudeGeometry(tabShape, {
       depth: baseThick,
-      bevelEnabled: bevel > 0.05,
-      bevelThickness: bevel * 0.65,
-      bevelSize: bevel * 0.65,
+      bevelEnabled: tabBevelEnabled,
+      bevelThickness: tabBevelSize,
+      bevelSize: tabBevelSize,
       bevelSegments: 4,
       curveSegments: 32,
     });
@@ -713,15 +737,17 @@ function buildKeychainModel(
     tabMesh.name = 'KeychainHoleTab';
     group.add(tabMesh);
 
+    const collarWall = Math.min(2.0, wallMm * 0.56);
+    const collarBevelSize = 0.22;
     const collarShape = new THREE.Shape();
-    collarShape.absarc(tabCenterX, tabCenterY, holeR + 1.85, 0, Math.PI * 2, false);
-    addCircularHole(collarShape, tabCenterX, tabCenterY, holeR);
+    collarShape.absarc(tabCenterX, tabCenterY, holeR + collarWall, 0, Math.PI * 2, false);
+    addCircularHole(collarShape, tabCenterX, tabCenterY, holeR + collarBevelSize);
 
     const collarGeo = new THREE.ExtrudeGeometry(collarShape, {
       depth: reliefThick * 0.85,
       bevelEnabled: true,
       bevelThickness: 0.25,
-      bevelSize: 0.22,
+      bevelSize: collarBevelSize,
       bevelSegments: 3,
       curveSegments: 32,
     });
@@ -732,11 +758,13 @@ function buildKeychainModel(
     const collarMesh = configurePrintableMesh(new THREE.Mesh(collarGeo, primaryMat));
     collarMesh.name = 'KeychainEyeletCollar';
     group.add(collarMesh);
-  } else if (attachMode === 'loop') {
-    const loopMajorR = 4.6;
-    const loopTubeR = Math.min(1.85, Math.max(1.3, baseThick * 0.44));
-    const loopCenterX = anchor.protrudeX + anchor.cardinalUx * (loopMajorR * 0.72);
-    const loopCenterY = anchor.protrudeY + anchor.cardinalUy * (loopMajorR * 0.72);
+  } else if (hasKeyring && attachMode === 'loop') {
+    const holeR = holeMm * 0.5;
+    const loopTubeR = Math.min(1.85, Math.max(1.25, baseThick * 0.44));
+    const loopMajorR = holeR + loopTubeR;
+    const protrudeDist = Math.max(loopMajorR * 0.72, holeR + 0.35);
+    const loopCenterX = anchor.protrudeX + anchor.cardinalUx * protrudeDist;
+    const loopCenterY = anchor.protrudeY + anchor.cardinalUy * protrudeDist;
 
     const loopGeo = new THREE.TorusGeometry(loopMajorR, loopTubeR, 24, 48);
     loopGeo.rotateX(Math.PI * 0.5);
@@ -1224,17 +1252,30 @@ function buildSvgKeychainModel(
     config.keyringDirection ?? 'top'
   );
 
+  const hasKeyring = config.keyringEnabled !== false;
+  const maxArchDiam = getKeychainArchMaxDiameterMm(totalThick, bevel, true);
+  const holeMm = THREE.MathUtils.clamp(
+    config.keyringHoleMm ?? (config.svgAttachMode === 'arch' ? 2.2 : 5.0),
+    config.svgAttachMode === 'arch' ? 1.2 : 1.5,
+    config.svgAttachMode === 'arch' ? maxArchDiam : 10.0
+  );
+
   let archPlacement: NegativeArchPlacement | null = null;
-  if (config.svgAttachMode === 'arch') {
+  if (hasKeyring && config.svgAttachMode === 'arch') {
     const baseBevelThick = bevel > 0.05 ? bevel * 0.72 : 0;
     const baseTopY = baseThick + baseBevelThick;
     const baseBottomY = -baseBevelThick;
     const baseHeight = baseTopY - baseBottomY;
-    const tubeRadius = THREE.MathUtils.clamp(baseHeight * 0.26, 0.96, 1.12);
-    const majorRadius = THREE.MathUtils.clamp(baseHeight * 0.55, 2.08, 2.42);
+    const tubeRadius = holeMm * 0.5;
+    const maxMajor = Math.max(tubeRadius + 0.75, baseHeight - 0.42 - tubeRadius);
+    const majorRadius = THREE.MathUtils.clamp(
+      tubeRadius + Math.max(0.8, tubeRadius * 0.65),
+      tubeRadius + 0.75,
+      maxMajor
+    );
     const archCenterY = Math.max(
       baseTopY + 0.05,
-      baseBottomY + majorRadius + tubeRadius + 0.45
+      baseBottomY + majorRadius + tubeRadius + 0.4
     );
     const dirX = anchor.ux;
     const dirZ = -anchor.uy;
@@ -1296,21 +1337,26 @@ function buildSvgKeychainModel(
   }
 
   // 5. Attachment Modes: 'hole' (punched rounded tab + collar) OR 'loop' (protruding 3D arch)
-  if (config.svgAttachMode === 'hole') {
-    const holeR = 2.45;
-    const outerTabR = 5.9;
-    const tabCenterX = anchor.protrudeX + anchor.cardinalUx * 2.85;
-    const tabCenterY = anchor.protrudeY + anchor.cardinalUy * 2.85;
+  if (hasKeyring && config.svgAttachMode === 'hole') {
+    const holeR = holeMm * 0.5;
+    const wallMm = Math.max(2.6, Math.min(3.6, holeR * 0.65 + 1.8));
+    const outerTabR = holeR + wallMm;
+    const protrudeDist = holeR + 0.4;
+    const tabCenterX = anchor.protrudeX + anchor.cardinalUx * protrudeDist;
+    const tabCenterY = anchor.protrudeY + anchor.cardinalUy * protrudeDist;
 
+    const tabBevelEnabled = bevel > 0.05;
+    const tabBevelSize = tabBevelEnabled ? bevel * 0.65 : 0;
     const tabShape = new THREE.Shape();
     tabShape.absarc(tabCenterX, tabCenterY, outerTabR, 0, Math.PI * 2, false);
-    addCircularHole(tabShape, tabCenterX, tabCenterY, holeR);
+    // Offset inner hole path by +bevelSize so the final beveled inner wall sits at exact radius holeR
+    addCircularHole(tabShape, tabCenterX, tabCenterY, holeR + tabBevelSize);
 
     const tabGeo = new THREE.ExtrudeGeometry(tabShape, {
       depth: baseThick,
-      bevelEnabled: bevel > 0.05,
-      bevelThickness: bevel * 0.65,
-      bevelSize: bevel * 0.65,
+      bevelEnabled: tabBevelEnabled,
+      bevelThickness: tabBevelSize,
+      bevelSize: tabBevelSize,
       bevelSegments: 4,
       curveSegments: 32,
     });
@@ -1322,15 +1368,17 @@ function buildSvgKeychainModel(
     group.add(tabMesh);
 
     // Raised reinforcement collar around hole
+    const collarWall = Math.min(2.0, wallMm * 0.56);
+    const collarBevelSize = 0.22;
     const collarShape = new THREE.Shape();
-    collarShape.absarc(tabCenterX, tabCenterY, holeR + 1.85, 0, Math.PI * 2, false);
-    addCircularHole(collarShape, tabCenterX, tabCenterY, holeR);
+    collarShape.absarc(tabCenterX, tabCenterY, holeR + collarWall, 0, Math.PI * 2, false);
+    addCircularHole(collarShape, tabCenterX, tabCenterY, holeR + collarBevelSize);
 
     const collarGeo = new THREE.ExtrudeGeometry(collarShape, {
       depth: reliefThick * 0.85,
       bevelEnabled: true,
       bevelThickness: 0.25,
-      bevelSize: 0.22,
+      bevelSize: collarBevelSize,
       bevelSegments: 3,
       curveSegments: 32,
     });
@@ -1341,12 +1389,14 @@ function buildSvgKeychainModel(
     const collarMesh = configurePrintableMesh(new THREE.Mesh(collarGeo, primaryMat));
     collarMesh.name = 'SvgKeychainHoleCollar';
     group.add(collarMesh);
-  } else if (config.svgAttachMode === 'loop') {
+  } else if (hasKeyring && config.svgAttachMode === 'loop') {
     // Sturdy protruding 3D arch/ring loop fused into the chosen cardinal edge
-    const loopMajorR = 4.6;
-    const loopTubeR = Math.min(1.85, Math.max(1.3, baseThick * 0.44));
-    const loopCenterX = anchor.protrudeX + anchor.cardinalUx * (loopMajorR * 0.72);
-    const loopCenterY = anchor.protrudeY + anchor.cardinalUy * (loopMajorR * 0.72);
+    const holeR = holeMm * 0.5;
+    const loopTubeR = Math.min(1.85, Math.max(1.25, baseThick * 0.44));
+    const loopMajorR = holeR + loopTubeR;
+    const protrudeDist = Math.max(loopMajorR * 0.72, holeR + 0.35);
+    const loopCenterX = anchor.protrudeX + anchor.cardinalUx * protrudeDist;
+    const loopCenterY = anchor.protrudeY + anchor.cardinalUy * protrudeDist;
 
     const loopGeo = new THREE.TorusGeometry(loopMajorR, loopTubeR, 24, 48);
     loopGeo.rotateX(Math.PI * 0.5);

@@ -695,6 +695,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
           const bounds = getTemplateDimensionBounds(template, buildPlatePropRef.current, {
             boxLetterLayout: configRef.current.boxLetterLayout,
             svgAttachMode: configRef.current.svgAttachMode,
+            keyringEnabled: configRef.current.keyringEnabled,
           });
           const isFlat =
             template === 'keychain' ||

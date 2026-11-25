@@ -231,8 +231,15 @@ export default function App() {
       getTemplateDimensionBounds(config.template, buildPlate, {
         boxLetterLayout: config.boxLetterLayout,
         svgAttachMode: config.svgAttachMode,
+        keyringEnabled: config.keyringEnabled,
       }),
-    [config.template, buildPlate, config.boxLetterLayout, config.svgAttachMode]
+    [
+      config.template,
+      buildPlate,
+      config.boxLetterLayout,
+      config.svgAttachMode,
+      config.keyringEnabled,
+    ]
   );
 
   // Persist build plate size to localStorage
@@ -412,6 +419,7 @@ export default function App() {
         const nextBounds = getTemplateDimensionBounds(prev.config.template, nextBed, {
           boxLetterLayout: prev.config.boxLetterLayout,
           svgAttachMode: prev.config.svgAttachMode,
+          keyringEnabled: prev.config.keyringEnabled,
         });
         const currentDims = extractDimensions(prev.config);
         const clamped = clampDimensionsToBounds(currentDims, nextBounds, true);
@@ -440,6 +448,7 @@ export default function App() {
         const bounds = getTemplateDimensionBounds(template, prev.buildPlate, {
           boxLetterLayout: defaults.boxLetterLayout,
           svgAttachMode: defaults.svgAttachMode,
+          keyringEnabled: defaults.keyringEnabled,
         });
         const clamped = clampDimensionsToBounds(extractDimensions(defaults), bounds, true);
         if (template === 'svg-keychain' || prev.config.template === 'svg-keychain') {
@@ -477,11 +486,13 @@ export default function App() {
         const merged = { ...prev.config, ...patch };
         if (
           patch.boxLetterLayout !== undefined ||
-          patch.svgAttachMode !== undefined
+          patch.svgAttachMode !== undefined ||
+          patch.keyringEnabled !== undefined
         ) {
           const nextBounds = getTemplateDimensionBounds(merged.template, prev.buildPlate, {
             boxLetterLayout: merged.boxLetterLayout,
             svgAttachMode: merged.svgAttachMode,
+            keyringEnabled: merged.keyringEnabled,
           });
           const clamped = clampDimensionsToBounds(
             extractDimensions(merged),
@@ -558,6 +569,7 @@ export default function App() {
         const bounds = getTemplateDimensionBounds(prev.config.template, prev.buildPlate, {
           boxLetterLayout: prev.config.boxLetterLayout,
           svgAttachMode: prev.config.svgAttachMode,
+          keyringEnabled: prev.config.keyringEnabled,
         });
         const clamped = clampDimensionsToBounds(dims, bounds, false);
         return {
@@ -580,6 +592,7 @@ export default function App() {
         const bounds = getTemplateDimensionBounds(prev.config.template, prev.buildPlate, {
           boxLetterLayout: prev.config.boxLetterLayout,
           svgAttachMode: prev.config.svgAttachMode,
+          keyringEnabled: prev.config.keyringEnabled,
         });
         const scaled = scaleDimensions(
           extractDimensions(prev.config),
@@ -617,6 +630,7 @@ export default function App() {
       const bounds = getTemplateDimensionBounds(defaults.template, prev.buildPlate, {
         boxLetterLayout: defaults.boxLetterLayout,
         svgAttachMode: defaults.svgAttachMode,
+        keyringEnabled: defaults.keyringEnabled,
       });
       const clamped = clampDimensionsToBounds(extractDimensions(defaults), bounds, true);
       return {

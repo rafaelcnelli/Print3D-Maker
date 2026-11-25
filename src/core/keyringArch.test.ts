@@ -8,7 +8,11 @@ import {
 } from './keyringArch';
 import { KEYRING_DIRECTIONS, createDefaultConfig } from './projectDefaults';
 import { buildVectorTextShapes } from './vectorFont';
-import { computePrintMetrics, exportGroupToBinarySTL } from './stlExporter';
+import {
+  computePrintMetrics,
+  exportGroupToBinarySTL,
+  extractSlicerTriangles,
+} from './stlExporter';
 import { buildProjectModel } from '../three/modelBuilder';
 
 test('findFirstLetterTopAnchor lands on a solid top stroke with safe wall margin and selects 1st or 2nd letter as best fits', () => {
@@ -221,6 +225,202 @@ test('negative keyring arch cavity shading never bleeds onto exterior triangles 
       `${tpl} should have at least one carved mesh with cavity AO`
     );
     built.disposeGeometries();
+  }
+
+  matA.dispose();
+  matB.dispose();
+});
+
+function computeExactVolumeMm3(root: THREE.Object3D): number {
+  const { triangles, triangleCount } = extractSlicerTriangles(root);
+  let signedVolume6 = 0;
+  for (let t = 0; t < triangleCount; t++) {
+    const o = t * 9;
+    const ax = triangles[o], ay = triangles[o + 1], az = triangles[o + 2];
+    const bx = triangles[o + 3], by = triangles[o + 4], bz = triangles[o + 5];
+    const cx = triangles[o + 6], cy = triangles[o + 7], cz = triangles[o + 8];
+    signedVolume6 +=
+      ax * (by * cz - bz * cy) -
+      ay * (bx * cz - bz * cx) +
+      az * (bx * cy - by * cx);
+  }
+  return Math.abs(signedVolume6 / 6);
+}
+
+test('disabling keyringEnabled removes all keyring attachments/arches across heart-name, keychain, and svg-keychain', () => {
+  const matA = new THREE.MeshStandardMaterial();
+  const matB = new THREE.MeshStandardMaterial();
+
+  // heart-name: disabling removes negative arch carve (higher volume, fewer triangles, no vertex color AO)
+  {
+    const cfgOn = createDefaultConfig('heart-name');
+    const cfgOff = { ...cfgOn, keyringArch: false, keyringEnabled: false };
+    const builtOn = buildProjectModel(cfgOn, matA, matB);
+    const builtOff = buildProjectModel(cfgOff, matA, matB);
+    const volOn = computeExactVolumeMm3(builtOn.group);
+    const volOff = computeExactVolumeMm3(builtOff.group);
+    assert.ok(
+      volOff > volOn + 5,
+      `heart-name without arch (${volOff.toFixed(1)}mm3) should have larger volume than carved (${volOn.toFixed(1)}mm3)`
+    );
+    const lettersOff = builtOff.group.getObjectByName('HeartLetters') as THREE.Mesh;
+    assert.equal(lettersOff.geometry.getAttribute('color'), undefined);
+    builtOn.disposeGeometries();
+    builtOff.disposeGeometries();
+  }
+
+  // keychain & svg-keychain across all 3 attach modes: keyringEnabled=false leaves zero tab/collar/loop and uncarved base
+  for (const tpl of ['keychain', 'svg-keychain'] as const) {
+    for (const mode of ['arch', 'hole', 'loop'] as const) {
+      const cfgOn = {
+        ...createDefaultConfig(tpl),
+        svgAttachMode: mode,
+        keyringArch: mode === 'arch',
+        keyringEnabled: true,
+      };
+      const cfgOff = {
+        ...cfgOn,
+        keyringEnabled: false,
+      };
+      const builtOn = buildProjectModel(cfgOn, matA, matB);
+      const builtOff = buildProjectModel(cfgOff, matA, matB);
+
+      assert.equal(builtOff.group.getObjectByName('KeychainHoleTab'), undefined);
+      assert.equal(builtOff.group.getObjectByName('KeychainEyeletCollar'), undefined);
+      assert.equal(builtOff.group.getObjectByName('KeychainArchLoop'), undefined);
+      assert.equal(builtOff.group.getObjectByName('SvgKeychainHoleTab'), undefined);
+      assert.equal(builtOff.group.getObjectByName('SvgKeychainHoleCollar'), undefined);
+      assert.equal(builtOff.group.getObjectByName('SvgKeychainArchLoop'), undefined);
+
+      const volOn = computeExactVolumeMm3(builtOn.group);
+      const volOff = computeExactVolumeMm3(builtOff.group);
+      if (mode === 'arch') {
+        assert.ok(
+          volOff > volOn + 5,
+          `${tpl} arch off (${volOff.toFixed(1)}mm3) should have greater volume than arch on (${volOn.toFixed(1)}mm3)`
+        );
+      } else {
+        assert.ok(
+          volOff < volOn - 10,
+          `${tpl} ${mode} off (${volOff.toFixed(1)}mm3) should have smaller volume without protruding attachment (${volOn.toFixed(1)}mm3)`
+        );
+      }
+      builtOn.disposeGeometries();
+      builtOff.disposeGeometries();
+    }
+  }
+
+  matA.dispose();
+  matB.dispose();
+});
+
+test('adjusting keyringHoleMm updates keyring hole size cleanly on heart-name, keychain, and svg-keychain', () => {
+  const matA = new THREE.MeshStandardMaterial();
+  const matB = new THREE.MeshStandardMaterial();
+
+  // heart-name: larger hole removes more material from the carved tunnel
+  {
+    const smallCfg = { ...createDefaultConfig('heart-name'), keyringHoleMm: 1.3 };
+    const largeCfg = { ...createDefaultConfig('heart-name'), keyringHoleMm: 3.4 };
+    const builtSmall = buildProjectModel(smallCfg, matA, matB);
+    const builtLarge = buildProjectModel(largeCfg, matA, matB);
+    const volSmall = computeExactVolumeMm3(builtSmall.group);
+    const volLarge = computeExactVolumeMm3(builtLarge.group);
+    assert.ok(
+      volLarge < volSmall - 2,
+      `heart-name larger hole (3.4mm -> ${volLarge.toFixed(2)}mm3) should carve more material than smaller hole (1.3mm -> ${volSmall.toFixed(2)}mm3)`
+    );
+    builtSmall.disposeGeometries();
+    builtLarge.disposeGeometries();
+  }
+
+  // keychain & svg-keychain across arch, hole, loop
+  for (const tpl of ['keychain', 'svg-keychain'] as const) {
+    // 'arch': larger diameter carves more volume
+    {
+      const smallCfg = {
+        ...createDefaultConfig(tpl),
+        svgAttachMode: 'arch' as const,
+        keyringHoleMm: 1.4,
+      };
+      const largeCfg = {
+        ...createDefaultConfig(tpl),
+        svgAttachMode: 'arch' as const,
+        keyringHoleMm: 2.6,
+      };
+      const builtSmall = buildProjectModel(smallCfg, matA, matB);
+      const builtLarge = buildProjectModel(largeCfg, matA, matB);
+      const volSmall = computeExactVolumeMm3(builtSmall.group);
+      const volLarge = computeExactVolumeMm3(builtLarge.group);
+      assert.ok(
+        volLarge < volSmall - 5,
+        `${tpl} arch larger diameter (2.6mm) should carve more volume than 1.4mm (${volLarge.toFixed(2)}mm3 < ${volSmall.toFixed(2)}mm3)`
+      );
+      builtSmall.disposeGeometries();
+      builtLarge.disposeGeometries();
+    }
+
+    // 'hole' and 'loop': larger hole increases outer footprint and inner opening matches exact diameter
+    for (const mode of ['hole', 'loop'] as const) {
+      const targetSmallDiam = 2.6;
+      const targetLargeDiam = 7.6;
+      const smallCfg = {
+        ...createDefaultConfig(tpl),
+        svgAttachMode: mode,
+        keyringArch: false,
+        keyringHoleMm: targetSmallDiam,
+      };
+      const largeCfg = {
+        ...createDefaultConfig(tpl),
+        svgAttachMode: mode,
+        keyringArch: false,
+        keyringHoleMm: targetLargeDiam,
+      };
+      const builtSmall = buildProjectModel(smallCfg, matA, matB);
+      const builtLarge = buildProjectModel(largeCfg, matA, matB);
+      const mSmall = computePrintMetrics(builtSmall.group);
+      const mLarge = computePrintMetrics(builtLarge.group);
+      assert.ok(
+        mLarge.depthMm > mSmall.depthMm || mLarge.widthMm > mSmall.widthMm,
+        `${tpl} ${mode} larger diameter should enlarge attachment bounds (small: ${mSmall.widthMm}x${mSmall.depthMm}, large: ${mLarge.widthMm}x${mLarge.depthMm})`
+      );
+
+      // Measure actual inner circle diameter directly from mesh vertices around attachment center
+      const meshName =
+        mode === 'hole'
+          ? tpl === 'keychain'
+            ? 'KeychainEyeletCollar'
+            : 'SvgKeychainHoleCollar'
+          : tpl === 'keychain'
+          ? 'KeychainArchLoop'
+          : 'SvgKeychainArchLoop';
+      for (const [built, expectedDiam] of [
+        [builtSmall, targetSmallDiam],
+        [builtLarge, targetLargeDiam],
+      ] as const) {
+        const mesh = built.group.getObjectByName(meshName) as THREE.Mesh;
+        assert.ok(mesh, `${meshName} should exist`);
+        const box = new THREE.Box3().setFromBufferAttribute(
+          mesh.geometry.getAttribute('position') as THREE.BufferAttribute
+        );
+        const cx = (box.min.x + box.max.x) * 0.5;
+        const cz = (box.min.z + box.max.z) * 0.5;
+        const pos = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+        let minRadial = Infinity;
+        for (let i = 0; i < pos.count; i++) {
+          const r = Math.hypot(pos.getX(i) - cx, pos.getZ(i) - cz);
+          if (r > 0.1 && r < minRadial) minRadial = r;
+        }
+        const measuredInnerDiam = minRadial * 2;
+        assert.ok(
+          Math.abs(measuredInnerDiam - expectedDiam) < 0.15,
+          `${tpl} ${mode} measured inner hole diameter ${measuredInnerDiam.toFixed(2)}mm should match target Ø ${expectedDiam.toFixed(2)}mm`
+        );
+      }
+
+      builtSmall.disposeGeometries();
+      builtLarge.disposeGeometries();
+    }
   }
 
   matA.dispose();

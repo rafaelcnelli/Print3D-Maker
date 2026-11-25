@@ -217,8 +217,27 @@ export const KEYRING_DIRECTIONS: {
   { id: 'bottom-right', label: 'Direita Baixo', shortLabel: '↘', row: 2, col: 2 },
 ];
 
+export const HEART_KEYRING_HOLE_RANGE = { min: 1.2, max: 3.6, step: 0.1, defaultMm: 2.0 };
+export const KEYCHAIN_KEYRING_HOLE_RANGE = { min: 1.5, max: 10.0, step: 0.1, defaultMm: 5.0 };
+export const KEYCHAIN_ARCH_HOLE_DEFAULT_MM = 2.2;
+
+export function getKeychainArchMaxDiameterMm(
+  depthMm: number,
+  bevelMm: number,
+  isSvgKeychain: boolean
+): number {
+  const baseThick = Math.max(2.4, depthMm * (isSvgKeychain ? 0.6 : 0.58));
+  const clampedBevel = Math.min(bevelMm, isSvgKeychain ? 0.6 : 0.65);
+  const bevelThick =
+    clampedBevel > 0.05 ? clampedBevel * (isSvgKeychain ? 0.72 : 0.78) : 0;
+  const baseHeight = baseThick + bevelThick * 2;
+  const rawMax = baseHeight - 1.2;
+  return Number(Math.max(1.6, Math.min(6.0, Math.floor(rawMax * 10) / 10)).toFixed(1));
+}
+
 const SHARED_EXTRA_DEFAULTS = {
   keyringDirection: 'top' as const,
+  keyringHoleMm: KEYCHAIN_KEYRING_HOLE_RANGE.defaultMm,
   monogramInitial: '',
   monogramNamePos: 34,
   boxLetterLayout: 'assembled' as const,
@@ -256,7 +275,9 @@ export function createDefaultConfig(template: TemplateId = 'heart-name'): Projec
         accentColor: '#F3F5F8',
         useDualColor: false,
         finish: 'pla-matte',
+        keyringEnabled: true,
         keyringArch: true,
+        keyringHoleMm: HEART_KEYRING_HOLE_RANGE.defaultMm,
         heartMode: 'pure',
         heartKeyring: false,
         signBaseStyle: 'beveled',
@@ -282,6 +303,7 @@ export function createDefaultConfig(template: TemplateId = 'heart-name'): Projec
         accentColor: '#F3F5F8',
         useDualColor: true,
         finish: 'pla-silk',
+        keyringEnabled: false,
         keyringArch: false,
         heartMode: 'pure',
         heartKeyring: false,
@@ -308,6 +330,7 @@ export function createDefaultConfig(template: TemplateId = 'heart-name'): Projec
         accentColor: '#F3F5F8',
         useDualColor: true,
         finish: 'pla-silk',
+        keyringEnabled: false,
         keyringArch: false,
         heartMode: 'pure',
         heartKeyring: false,
@@ -334,7 +357,9 @@ export function createDefaultConfig(template: TemplateId = 'heart-name'): Projec
         accentColor: '#F3F5F8',
         useDualColor: true,
         finish: 'pla-matte',
+        keyringEnabled: true,
         keyringArch: true,
+        keyringHoleMm: KEYCHAIN_ARCH_HOLE_DEFAULT_MM,
         heartMode: 'pure',
         heartKeyring: false,
         signBaseStyle: 'beveled',
@@ -360,6 +385,7 @@ export function createDefaultConfig(template: TemplateId = 'heart-name'): Projec
         accentColor: '#232730',
         useDualColor: true,
         finish: 'pla-matte',
+        keyringEnabled: false,
         keyringArch: false,
         heartMode: 'solid-front',
         heartKeyring: false,
@@ -386,7 +412,9 @@ export function createDefaultConfig(template: TemplateId = 'heart-name'): Projec
         accentColor: '#D93848',
         useDualColor: true,
         finish: 'pla-gloss',
+        keyringEnabled: true,
         keyringArch: true,
+        keyringHoleMm: KEYCHAIN_ARCH_HOLE_DEFAULT_MM,
         heartMode: 'solid-front',
         heartKeyring: false,
         signBaseStyle: 'beveled',
@@ -412,6 +440,7 @@ export function createDefaultConfig(template: TemplateId = 'heart-name'): Projec
         accentColor: '#232730',
         useDualColor: true,
         finish: 'pla-matte',
+        keyringEnabled: false,
         keyringArch: false,
         heartMode: 'solid-front',
         heartKeyring: false,

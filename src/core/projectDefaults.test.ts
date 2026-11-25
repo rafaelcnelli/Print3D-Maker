@@ -45,16 +45,21 @@ test('only heart-name and keychains enable keyring holes/arches by default and b
       allowedWithKeyring.has(id),
       `${id} keyringArch default mismatch`
     );
+    assert.equal(
+      cfg.keyringEnabled,
+      allowedWithKeyring.has(id),
+      `${id} keyringEnabled default mismatch`
+    );
 
     if (!allowedWithKeyring.has(id)) {
-      const cfgOff = { ...cfg, keyringArch: false };
-      const cfgForcedOn = { ...cfg, keyringArch: true };
+      const cfgOff = { ...cfg, keyringArch: false, keyringEnabled: false };
+      const cfgForcedOn = { ...cfg, keyringArch: true, keyringEnabled: true };
       const builtOff = buildProjectModel(cfgOff, matA, matB);
       const builtOn = buildProjectModel(cfgForcedOn, matA, matB);
       const mOff = computePrintMetrics(builtOff.group);
       const mOn = computePrintMetrics(builtOn.group);
-      assert.equal(mOn.triangleCount, mOff.triangleCount, `${id} must ignore keyringArch`);
-      assert.equal(mOn.volumeCm3, mOff.volumeCm3, `${id} volume must not be carved by keyringArch`);
+      assert.equal(mOn.triangleCount, mOff.triangleCount, `${id} must ignore keyringArch/keyringEnabled`);
+      assert.equal(mOn.volumeCm3, mOff.volumeCm3, `${id} volume must not be carved by keyring`);
       builtOff.disposeGeometries();
       builtOn.disposeGeometries();
     }

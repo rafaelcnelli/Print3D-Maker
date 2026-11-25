@@ -33,6 +33,7 @@ export function getTemplateDimensionBounds(
   options?: {
     boxLetterLayout?: BoxLetterLayout;
     svgAttachMode?: SvgAttachMode;
+    keyringEnabled?: boolean;
   }
 ): DimensionBounds {
   const m = TEMPLATES[template];
@@ -62,6 +63,7 @@ export function getTemplateDimensionBounds(
 
   const hasProtrudingTab =
     (template === 'svg-keychain' || template === 'keychain') &&
+    options?.keyringEnabled !== false &&
     (options?.svgAttachMode === 'hole' || options?.svgAttachMode === 'loop');
 
   // Allow width to expand up to the build plate (and strictly never exceed usableX)
